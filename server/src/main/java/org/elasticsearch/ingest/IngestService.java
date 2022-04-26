@@ -664,7 +664,8 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
                         onFailure,
                         counter,
                         onCompletion,
-                        originalThread
+                        originalThread,
+                        indexRequest.sourceAsMap()
                     );
 
                     i++;
@@ -682,7 +683,8 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
         final BiConsumer<Integer, Exception> onFailure,
         final AtomicInteger counter,
         final BiConsumer<Thread, Exception> onCompletion,
-        final Thread originalThread
+        final Thread originalThread,
+        final Map<String, Object> sourceAsMap
     ) {
         assert it.hasNext();
         final String pipelineId = it.next();
@@ -740,7 +742,8 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
                         onFailure,
                         counter,
                         onCompletion,
-                        originalThread
+                        originalThread,
+                        sourceAsMap
                     );
                 } else {
                     if (counter.decrementAndGet() == 0) {
@@ -748,7 +751,7 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
                     }
                     assert counter.get() >= 0;
                 }
-            });
+            }, sourceAsMap);
         } catch (Exception e) {
             logger.debug(
                 () -> new ParameterizedMessage(
@@ -823,7 +826,9 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
         IndexRequest indexRequest,
         Pipeline pipeline,
         IntConsumer itemDroppedHandler,
-        Consumer<Exception> handler
+        Consumer<Exception> handler,
+        // We pass this in and update it within this method to avoid calling IndexRequest.sourceAsMap() repeatedly
+        Map<String, Object> sourceAsMap
     ) {
         if (pipeline.getProcessors().isEmpty()) {
             handler.accept(null);
@@ -839,7 +844,6 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
         String routing = indexRequest.routing();
         Long version = indexRequest.version();
         VersionType versionType = indexRequest.versionType();
-        Map<String, Object> sourceAsMap = indexRequest.sourceAsMap();
         IngestDocument ingestDocument = new IngestDocument(index, id, routing, version, versionType, sourceAsMap);
         ingestDocument.executePipeline(pipeline, (result, e) -> {
             long ingestTimeInNanos = System.nanoTime() - startTimeInNanos;
@@ -869,7 +873,9 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
                 if (metadataMap.get(IngestDocument.Metadata.IF_PRIMARY_TERM) != null) {
                     indexRequest.setIfPrimaryTerm(((Number) metadataMap.get(IngestDocument.Metadata.IF_PRIMARY_TERM)).longValue());
                 }
-                indexRequest.source(ingestDocument.getSourceAndMetadata(), indexRequest.getContentType());
+                Map<String, Object> sourceAndMetadata = ingestDocument.getSourceAndMetadata();
+                sourceAsMap.putAll(sourceAndMetadata);
+                indexRequest.source(sourceAndMetadata, indexRequest.getContentType());
                 if (metadataMap.get(IngestDocument.Metadata.DYNAMIC_TEMPLATES) != null) {
                     Map<String, String> mergedDynamicTemplates = new HashMap<>(indexRequest.getDynamicTemplates());
                     @SuppressWarnings("unchecked")
