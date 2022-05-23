@@ -30,6 +30,7 @@ import org.elasticsearch.xpack.core.deprecation.DeprecationIssue;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -50,6 +51,9 @@ import static org.elasticsearch.xpack.cluster.routing.allocation.DataTierAllocat
  */
 public class IndexDeprecationChecks {
     private static final Logger logger = LogManager.getLogger(IndexDeprecationChecks.class);
+    private static Map<MappingMetadata, Map<String, Object>> mappingMetadataToSourceAsMapMap = new HashMap<>();
+    private static int cacheHit = 0;
+    private static int cacheMiss = 0;
 
     static final String JODA_TIME_DEPRECATION_DETAILS_SUFFIX = " See https://www.elastic.co/guide/en/elasticsearch/reference/master"
         + "/migrate-to-java-time.html for details. Failure to update custom data formats to java.time could cause inconsistentencies in "
@@ -58,6 +62,14 @@ public class IndexDeprecationChecks {
     private static void fieldLevelMappingIssue(IndexMetadata indexMetadata, BiConsumer<MappingMetadata, Map<String, Object>> checker) {
         for (MappingMetadata mappingMetadata : indexMetadata.getMappings().values()) {
             Map<String, Object> sourceAsMap = mappingMetadata.sourceAsMap();
+//            Map<String, Object> sourceAsMap = mappingMetadataToSourceAsMapMap.get(mappingMetadata);
+//            if (sourceAsMap == null) {
+//                sourceAsMap = mappingMetadata.sourceAsMap();
+//                mappingMetadataToSourceAsMapMap.put(mappingMetadata, sourceAsMap);
+////                System.out.println("Cache miss " + ++cacheMiss);
+//            } else {
+////                System.out.println("Cache hit " + ++cacheHit);
+//            }
             checker.accept(mappingMetadata, sourceAsMap);
         }
     }

@@ -1765,7 +1765,10 @@ public class IndexMetadata implements Diffable<IndexMetadata>, ToXContentFragmen
                         }
                         builder.primaryTerms(list.toArray());
                     } else {
-                        throw new IllegalArgumentException("Unexpected field for an array " + currentFieldName);
+                        while ((token = parser.nextToken()) != XContentParser.Token.END_ARRAY) {
+
+                        }
+//                        throw new IllegalArgumentException("Unexpected field for an array " + currentFieldName);
                     }
                 } else if (token.isValue()) {
                     if (KEY_STATE.equals(currentFieldName)) {
@@ -1792,17 +1795,17 @@ public class IndexMetadata implements Diffable<IndexMetadata>, ToXContentFragmen
                     throw new IllegalArgumentException("Unexpected token " + token);
                 }
             }
-            XContentParserUtils.ensureExpectedToken(XContentParser.Token.END_OBJECT, parser.nextToken(), parser);
-            Version indexVersion = indexCreatedVersion(builder.settings);
-            if (Assertions.ENABLED && indexVersion.onOrAfter(Version.V_6_5_0)) {
-                assert mappingVersion : "mapping version should be present for indices created on or after 6.5.0";
-            }
-            if (Assertions.ENABLED && indexVersion.onOrAfter(Version.V_6_5_0)) {
-                assert settingsVersion : "settings version should be present for indices created on or after 6.5.0";
-            }
-            if (Assertions.ENABLED && indexVersion.onOrAfter(Version.V_7_2_0)) {
-                assert aliasesVersion : "aliases version should be present for indices created on or after 7.2.0";
-            }
+//            XContentParserUtils.ensureExpectedToken(XContentParser.Token.END_OBJECT, parser.nextToken(), parser);
+//            Version indexVersion = indexCreatedVersion(builder.settings);
+//            if (Assertions.ENABLED && indexVersion.onOrAfter(Version.V_6_5_0)) {
+//                assert mappingVersion : "mapping version should be present for indices created on or after 6.5.0";
+//            }
+//            if (Assertions.ENABLED && indexVersion.onOrAfter(Version.V_6_5_0)) {
+//                assert settingsVersion : "settings version should be present for indices created on or after 6.5.0";
+//            }
+//            if (Assertions.ENABLED && indexVersion.onOrAfter(Version.V_7_2_0)) {
+//                assert aliasesVersion : "aliases version should be present for indices created on or after 7.2.0";
+//            }
             return builder.build();
         }
     }

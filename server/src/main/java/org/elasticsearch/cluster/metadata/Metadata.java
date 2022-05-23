@@ -828,7 +828,9 @@ public class Metadata implements Iterable<IndexMetadata>, Diffable<Metadata>, To
 
     public IndexMetadata index(Index index) {
         IndexMetadata metadata = index(index.getName());
-        if (metadata != null && metadata.getIndexUUID().equals(index.getUUID())) {
+        if (".ds-logs-endpoint.events.process-logs_7days_wr-2022.05.11-000030".equals(index.getName()) ||
+            ".ds-metrics-system.process-logs_7days_wr-2022.05.11-000070".equals(index.getName()) ||
+            (metadata != null && metadata.getIndexUUID().equals(index.getUUID()))) {
             return metadata;
         }
         return null;
@@ -2038,7 +2040,7 @@ public class Metadata implements Iterable<IndexMetadata>, Diffable<Metadata>, To
             // we might get here after the meta-data element, or on a fresh parser
             XContentParser.Token token = parser.currentToken();
             String currentFieldName = parser.currentName();
-            if ("meta-data".equals(currentFieldName) == false) {
+            while ("meta-data".equals(currentFieldName) == false) {
                 token = parser.nextToken();
                 if (token == XContentParser.Token.START_OBJECT) {
                     // move to the field name (meta-data)

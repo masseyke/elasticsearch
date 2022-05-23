@@ -462,6 +462,8 @@ public final class DataStream extends AbstractDiffable<DataStream> implements To
     public static final ParseField HIDDEN_FIELD = new ParseField("hidden");
     public static final ParseField REPLICATED_FIELD = new ParseField("replicated");
     public static final ParseField SYSTEM_FIELD = new ParseField("system");
+    public static final ParseField ALLOW_CUSTOM_ROUTING = new ParseField("allow_custom_routing");
+    public static final ParseField INDEX_MODE = new ParseField("index_mode");
 
     @SuppressWarnings("unchecked")
     private static final ConstructingObjectParser<DataStream, Void> PARSER = new ConstructingObjectParser<>(
@@ -487,6 +489,8 @@ public final class DataStream extends AbstractDiffable<DataStream> implements To
         PARSER.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), HIDDEN_FIELD);
         PARSER.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), REPLICATED_FIELD);
         PARSER.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), SYSTEM_FIELD);
+        PARSER.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), ALLOW_CUSTOM_ROUTING);
+        PARSER.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), INDEX_MODE);
     }
 
     public static DataStream fromXContent(XContentParser parser) throws IOException {

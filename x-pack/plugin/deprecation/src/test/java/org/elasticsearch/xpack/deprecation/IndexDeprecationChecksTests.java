@@ -7,13 +7,19 @@
 
 package org.elasticsearch.xpack.deprecation;
 
+import org.apache.commons.compress.utils.IOUtils;
 import org.elasticsearch.Version;
 import org.elasticsearch.cluster.ClusterState;
+import org.elasticsearch.cluster.coordination.ElasticsearchNodeCommand;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.MappingMetadata;
+import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.cluster.routing.allocation.DataTier;
+import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
+import org.elasticsearch.common.collect.ImmutableOpenMap;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexModule;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.IndexingSlowLog;
@@ -27,9 +33,12 @@ import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.test.VersionUtils;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentFactory;
+import org.elasticsearch.xcontent.XContentParser;
+import org.elasticsearch.xcontent.json.JsonXContent;
 import org.elasticsearch.xpack.core.deprecation.DeprecationIssue;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -80,6 +89,151 @@ public class IndexDeprecationChecksTests extends ESTestCase {
             c -> c.apply(ClusterState.EMPTY_STATE, indexMetadata)
         );
         assertEquals(singletonList(expected), issues);
+    }
+
+    public void testFromClusterState() throws Exception {
+        Metadata loadedMetadata;
+//        Path path = Paths.get("./src/test/resources/sample.json");
+        String path = "/org/elasticsearch/xpack/deprecation/test/sample-files/sample.json";
+        byte[] bytes;
+        try (InputStream is = IndexDeprecationChecksTests.class.getResourceAsStream(path)) {
+            bytes = IOUtils.toByteArray(is);
+        }
+//        byte[] data = Files.readAllBytes(path);
+        BytesReference bytesReference = new BytesArray(bytes);
+//        final XContentBuilder builder = JsonXContent.contentBuilder();
+        try (
+            XContentParser parser = createParser(
+                ElasticsearchNodeCommand.namedXContentRegistry,
+                JsonXContent.jsonXContent,
+                bytesReference
+            )
+        ) {
+            loadedMetadata = Metadata.fromXContent(parser);
+        }
+        AtomicInteger count = new AtomicInteger();
+        loadedMetadata.getIndicesLookup().values().forEach(thing -> {
+
+            for (Index index : thing.getIndices()) {
+//                System.out.println(index);
+                if (loadedMetadata.index(index) == null) {
+                    System.out.println(
+                        thing.getName() + ":" + index);
+                    count.getAndIncrement();
+                }
+            }
+});
+        System.out.println("Number of bad indices **************: " + count.get());
+        ImmutableOpenMap<String, IndexMetadata> indices = loadedMetadata.getIndices();
+        System.out.println("Total things in clusterState.metadata.getIndicesLookup() " + loadedMetadata.getIndicesLookup().keySet().size());
+        System.out.println("Total things in clusterState.metadata.getIndices(): " + indices.size());
+        System.out.println("Total clusterState.metadata.dataStreams(): " + loadedMetadata.dataStreams().size());
+//        AtomicInteger indexCount = new AtomicInteger();
+//        final int[] mostFieldsCount = {0};
+//        final String[] mostFieldsIndex = new String[]{""};
+//        int totalCount = indices.stream().map(entry -> {
+//            indexCount.getAndIncrement();
+////            System.out.println(entry.getKey());
+//            MappingMetadata mappingMetadata = entry.getValue().mapping();
+//            int size;
+//            if (mappingMetadata == null) {
+////                System.out.println("size: null");
+//                size = 0;
+//            } else {
+//                size = entry.getValue().mapping().getSourceAsMap().size();
+////                System.out.println("size: " + size);
+//            }
+//            if (size > mostFieldsCount[0]) {
+//                mostFieldsCount[0] = size;
+//                mostFieldsIndex[0] = entry.getKey();
+//            }
+//            return size;
+//        }).reduce(0, Integer::sum);
+//        System.out.println("total field count: " + totalCount);
+//        System.out.println("total index count: " + indexCount);
+//        System.out.println("index with most fields: " + mostFieldsIndex[0] + " has " + mostFieldsCount[0] + " fields");
+        indices.stream().forEach(
+            index -> DeprecationChecks.filterChecks(
+            INDEX_SETTINGS_CHECKS,
+            c -> c.apply(ClusterState.EMPTY_STATE, index.getValue())
+        ));
+    }
+
+    public void xtestLargeMapping() throws Exception {
+        XContentBuilder xContent = XContentFactory.jsonBuilder();
+        xContent.startObject();
+        {
+            xContent.startObject("properties");
+            {
+                for (int i = 0; i < 5000; i++) {
+                    xContent.startObject("invalid-field" + i);
+                    {
+                        xContent.field("type", "keyword");
+                        xContent.startObject("fields");
+                        {
+                            xContent.startObject("sub-field");
+                            {
+                                xContent.field("type", "keyword");
+                                xContent.startObject("fields");
+                                {
+                                    xContent.startObject("sub-sub-field");
+                                    {
+                                        xContent.field("type", "keyword");
+                                    }
+                                    xContent.endObject();
+                                }
+                                xContent.endObject();
+                            }
+                            xContent.endObject();
+                        }
+                        xContent.endObject();
+                    }
+                    xContent.endObject();
+                    xContent.startObject("valid-field" + i);
+                    {
+                        xContent.field("type", "keyword");
+                        xContent.startObject("fields");
+                        {
+                            xContent.startObject("sub-field");
+                            {
+                                xContent.field("type", "keyword");
+                            }
+                            xContent.endObject();
+                        }
+                        xContent.endObject();
+                    }
+                    xContent.endObject();
+                }
+            }
+            xContent.endObject();
+        }
+        xContent.endObject();
+        String mapping = BytesReference.bytes(xContent).utf8ToString();
+
+        IndexMetadata simpleIndex = IndexMetadata.builder(randomAlphaOfLengthBetween(5, 10))
+            .settings(settings(Version.V_7_3_0))
+            .numberOfShards(1)
+            .numberOfReplicas(1)
+            .putMapping("_doc", mapping)
+            .build();
+        for (int i = 0; i < 1000; i++) {
+            List<DeprecationIssue> issues = DeprecationChecks.filterChecks(
+                INDEX_SETTINGS_CHECKS,
+                c -> c.apply(ClusterState.EMPTY_STATE, simpleIndex)
+            );
+            assertEquals(1, issues.size());
+        }
+
+
+        DeprecationIssue expected = new DeprecationIssue(
+            DeprecationIssue.Level.WARNING,
+            "Defining multi-fields within multi-fields is deprecated",
+            "https://ela.st/es-deprecation-7-chained-multi-fields",
+            "Remove chained multi-fields from the \"invalid-field\" mapping. Multi-fields within multi-fields are not supported in 8.0.",
+            false,
+            null
+        );
+//        assertEquals(singletonList(expected), issues);
     }
 
     public void testChainedMultiFields() throws IOException {
