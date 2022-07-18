@@ -110,7 +110,8 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
      * This field holds the result of the tasks in the remoteStableMasterHealthIndicatorTasks field above. The field is accessed
      * (reads/writes) from multiple threads, but the reference itself is only ever changed on the cluster change event thread.
      */
-    private volatile AtomicReference<RemoteMasterHealthResult> remoteCoordinationDiagnosisResult = null;  // Non-private for testing
+    // Non-private for testing
+    volatile AtomicReference<RemoteMasterHealthResult> remoteCoordinationDiagnosisResult = null;  // Non-private for testing
 
     /**
      * This is the default amount of time we look back to see if we have had a master at all, before moving on with other checks
@@ -352,6 +353,59 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
         } else if (leaderHasBeenElected) {
             DiscoveryNode currentMaster = coordinator.getPeerFinder().getLeader().get();
             result = getResultOnCannotJoinLeader(localMasterHistory, currentMaster, explain);
+        } else if (clusterService.localNode().isMasterNode() == false) { // none is elected master and we aren't master eligible
+            RemoteMasterHealthResult remoteResultOrException = remoteCoordinationDiagnosisResult.get();
+            final CoordinationDiagnosticsStatus status;
+            final String summary;
+            if (remoteResultOrException == null) {
+                status = CoordinationDiagnosticsStatus.RED;
+                summary = String.format(
+                    Locale.ROOT,
+                    "No master node observed in the last %s, and this node is not master eligible. Reaching out to a master-eligible node"
+                        + " for more information, but no result yet.",
+                    nodeHasMasterLookupTimeframe
+                );
+            } else {
+                DiscoveryNode remoteNode = remoteResultOrException.node;
+                CoordinationDiagnosticsResult remoteResult = remoteResultOrException.result;
+                Exception exception = remoteResultOrException.remoteException;
+                if (remoteResult != null) {
+                    if (remoteResult.status().equals(CoordinationDiagnosticsStatus.GREEN) == false) {
+                        status = remoteResult.status();
+                        summary = remoteResult.summary;
+                    } else {
+                        status = CoordinationDiagnosticsStatus.RED;
+                        summary = String.format(
+                            Locale.ROOT,
+                            "No master node observed in the last %s from this node, but %s reports that the status is GREEN. This "
+                                + "indicates that there is a discovery problem on %s",
+                            nodeHasMasterLookupTimeframe,
+                            remoteNode.getName(),
+                            coordinator.getLocalNode().getName()
+                        );
+                    }
+                } else if (exception != null) {
+                    status = CoordinationDiagnosticsStatus.RED;
+                    summary = String.format(
+                        Locale.ROOT,
+                        "No master node observed in the last %s from this node, and received an exception while reaching out to %s for "
+                            + "diagnosis",
+                        nodeHasMasterLookupTimeframe,
+                        remoteNode.getName()
+                    );
+                } else {
+                    // It should not be possible to get here
+                    status = CoordinationDiagnosticsStatus.RED;
+                    summary = String.format(
+                        Locale.ROOT,
+                        "No master node observed in the last %s from this node, and received an unexpected response from %s when "
+                            + "reaching out for diagnosis",
+                        nodeHasMasterLookupTimeframe,
+                        remoteNode.getName()
+                    );
+                }
+            }
+            result = new CoordinationDiagnosticsResult(status, summary, CoordinationDiagnosticsDetails.EMPTY);
         } else {
             // NOTE: The logic in this block will be implemented in a future PR
             result = new CoordinationDiagnosticsResult(
