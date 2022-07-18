@@ -37,7 +37,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.elasticsearch.cluster.coordination.AbstractCoordinatorTestCase.Cluster.DEFAULT_DELAY_VARIABILITY;
 import static org.elasticsearch.cluster.coordination.AbstractCoordinatorTestCase.Cluster.EXTREME_DELAY_VARIABILITY;
 import static org.elasticsearch.cluster.coordination.CoordinationDiagnosticsService.ClusterFormationStateOrException;
 import static org.elasticsearch.cluster.coordination.CoordinationDiagnosticsService.CoordinationDiagnosticsStatus;
@@ -384,7 +383,7 @@ public class CoordinationDiagnosticsServiceTests extends AbstractCoordinatorTest
             DiscoveryNode nonKilledMasterNode = cluster.getAnyLeader().getLocalNode();
             for (Cluster.ClusterNode node : cluster.clusterNodes) {
                 if (node.getLocalNode().isMasterNode() && node.getLocalNode().equals(nonKilledMasterNode) == false) {
-                        node.disconnect();
+                    node.disconnect();
                 }
             }
             cluster.runFor(DEFAULT_STABILISATION_TIME, "Cannot call stabilise() because there is no master");
@@ -397,8 +396,15 @@ public class CoordinationDiagnosticsServiceTests extends AbstractCoordinatorTest
                     .diagnoseMasterStability(true);
                 assertThat(healthIndicatorResult.status(), equalTo(CoordinationDiagnosticsStatus.RED));
                 String summary = healthIndicatorResult.summary();
-                assertThat(summary, anyOf(containsString("No master has been observed recently"),
-                    containsString("Reaching out to a master-eligible node for more information, but no result yet.")));
+                assertThat(
+                    summary,
+                    anyOf(
+                        // This one happens if we happen to be polling the still-reachable master-eligible node:
+                        containsString("No master has been observed recently"),
+                        // And this one happens if we poll one of the disconnected master-eligible nodes:
+                        containsString("Reaching out to a master-eligible node for more information, but no result yet.")
+                    )
+                );
                 CoordinationDiagnosticsStatus artificialRemoteStatus = randomValueOtherThan(
                     CoordinationDiagnosticsStatus.GREEN,
                     () -> randomFrom(CoordinationDiagnosticsStatus.values())
