@@ -37,6 +37,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.elasticsearch.cluster.coordination.AbstractCoordinatorTestCase.Cluster.DEFAULT_DELAY_VARIABILITY;
 import static org.elasticsearch.cluster.coordination.AbstractCoordinatorTestCase.Cluster.EXTREME_DELAY_VARIABILITY;
 import static org.elasticsearch.cluster.coordination.CoordinationDiagnosticsService.ClusterFormationStateOrException;
 import static org.elasticsearch.cluster.coordination.CoordinationDiagnosticsService.CoordinationDiagnosticsStatus;
@@ -377,32 +378,46 @@ public class CoordinationDiagnosticsServiceTests extends AbstractCoordinatorTest
         try (Cluster cluster = new Cluster(3, true, Settings.EMPTY)) {
             createAndAddNonMasterNode(cluster);
             createAndAddNonMasterNode(cluster);
-            cluster.runRandomly();
+            cluster.runRandomly(false, true, DEFAULT_DELAY_VARIABILITY);
             cluster.stabilise();
-            int killedMasterNodeCount = 0;
-            DiscoveryNode nonKilledMasterNode = null;
+//            int killedMasterNodeCount = 0;
+            DiscoveryNode nonKilledMasterNode = cluster.getAnyLeader().getLocalNode();
             for (Cluster.ClusterNode node : cluster.clusterNodes) {
-                if (killedMasterNodeCount >= 2) {
-                    nonKilledMasterNode = node.getLocalNode();
-                } else if (node.getLocalNode().isMasterNode()) {
-                    node.disconnect();
-                    killedMasterNodeCount++;
+                if (node.getLocalNode().isMasterNode() && node.getLocalNode().equals(nonKilledMasterNode) == false) {
+//                    if (killedMasterNodeCount >= 2) {
+//                        nonKilledMasterNode = node.getLocalNode();
+//                    } else if (node.getLocalNode().isMasterNode()) {
+                        node.disconnect();
+                        logger.warn("Disconnecting " + node.getLocalNode().getId());
+//                        killedMasterNodeCount++;
+//                    }
                 }
             }
+            logger.warn("Running after disconnecting!!!!!!!!");
             cluster.runFor(DEFAULT_STABILISATION_TIME, "Cannot call stabilise() because there is no master");
+            logger.warn("Completed running after disconnecting!!!!!!!!");
+            int noMasterResultCount = 0;
+            int noResultYetCount = 0;
             for (Cluster.ClusterNode node : cluster.clusterNodes.stream()
                 .filter(node -> node.getLocalNode().isMasterNode() == false)
                 .toList()) {
                 CoordinationDiagnosticsService.CoordinationDiagnosticsResult healthIndicatorResult = node.coordinationDiagnosticsService
                     .diagnoseMasterStability(true);
                 assertThat(healthIndicatorResult.status(), equalTo(CoordinationDiagnosticsStatus.RED));
-                assertThat(
-                    healthIndicatorResult.summary(),
-                    containsString(
-                        "No master node observed in the last 30s, and this node is not master eligible. Reaching out to a master-eligible"
-                            + " node for more information, but no result yet."
-                    )
-                );
+                String summary = healthIndicatorResult.summary();
+                if (summary.contains("No master has been observed recently")) {
+                    noMasterResultCount++;
+                } else if (summary.contains("Reaching out to a master-eligible node for more information, but no result yet.")) {
+                    noResultYetCount++;
+                } else {
+                    fail(summary);
+                }
+//                assertThat(node.getId() + " no result from " + nonKilledMasterNode.getAddress(),
+//                    healthIndicatorResult.summary(),
+//                    containsString(
+//                        "No master has been observed recently"
+//                    )
+//                );
 
                 CoordinationDiagnosticsStatus artificialRemoteStatus = randomValueOtherThan(
                     CoordinationDiagnosticsStatus.GREEN,
@@ -442,6 +457,10 @@ public class CoordinationDiagnosticsServiceTests extends AbstractCoordinatorTest
                 assertThat(healthIndicatorResult.status(), equalTo(CoordinationDiagnosticsStatus.RED));
                 assertThat(healthIndicatorResult.summary(), containsString("received an exception"));
             }
+            System.out.println("******** No master: " + noMasterResultCount);
+            System.out.println("******** No result: " + noResultYetCount);
+            assertThat(noMasterResultCount, equalTo(1));
+            assertThat(noResultYetCount, equalTo(1));
 
             while (cluster.clusterNodes.stream().anyMatch(Cluster.ClusterNode::deliverBlackholedRequests)) {
                 logger.debug("--> stabilising again after delivering blackholed requests");

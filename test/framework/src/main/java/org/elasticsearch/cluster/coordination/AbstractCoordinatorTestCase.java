@@ -1785,7 +1785,7 @@ public class AbstractCoordinatorTestCase extends ESTestCase {
     protected DiscoveryNode createDiscoveryNode(int nodeIndex, boolean masterEligible) {
         final TransportAddress address = buildNewFakeTransportAddress();
         return new DiscoveryNode(
-            "",
+            "node" + nodeIndex,
             "node" + nodeIndex,
             UUIDs.randomBase64UUID(random()), // generated deterministically for repeatable tests
             address.address().getHostString(),
