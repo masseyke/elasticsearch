@@ -569,7 +569,7 @@ public class StableMasterDisruptionIT extends ESIntegTestCase {
 
     public void testNoQuorum() throws Exception {
         /*
-         * In this test we have a three master-eligible node. We make it so that the two non-active ones cannot communicate, and then we
+         * In this test we have three master-eligible nodes. We make it so that the two non-active ones cannot communicate, and then we
          * stop the active master node. Now there is no quorum so a new master cannot be elected. We set the master lookup threshold very
          * low on the data nodes, so when we run the master stability check on each of the master nodes, it will see that there has been no
          * master recently and because there is no quorum, so it returns a RED status.
@@ -609,12 +609,11 @@ public class StableMasterDisruptionIT extends ESIntegTestCase {
         setDisruptionScheme(networkDisconnect);
         networkDisconnect.startDisrupting();
         internalCluster().stopNode(firstMasterNode);
-        for (String nonActiveMasterNode : dataNodes) {
-            assertMasterStability(
-                internalCluster().client(nonActiveMasterNode),
-                HealthStatus.RED,
-                "No master node observed in the last 1s, and this node is not master eligible"
-            );
+        for (String nonActiveMasterNode : nonActiveMasterNodes) {
+            assertMasterStability(internalCluster().client(nonActiveMasterNode), HealthStatus.RED, "No master has been observed recently");
+        }
+        for (String dataNode : dataNodes) {
+            assertMasterStability(internalCluster().client(dataNode), HealthStatus.RED, "No master has been observed recently");
         }
     }
 }
