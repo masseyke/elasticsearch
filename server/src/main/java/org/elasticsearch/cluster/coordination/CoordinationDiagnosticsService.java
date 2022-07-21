@@ -101,11 +101,11 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
     private static final Logger logger = LogManager.getLogger(CoordinationDiagnosticsService.class);
 
     /*
-     * This is a list of tasks that are periodically reaching out to a master eligible node to get its CoordinationDiagnosticsResult for
-     * diagnosis.
+     * This is a reference to the task that is periodically reaching out to a master eligible node to get its CoordinationDiagnosticsResult
+     * for diagnosis. It is null when no polling is occurring.
      * The field is accessed (reads/writes) from multiple threads, and is also reassigned on multiple threads.
      */
-    private volatile List<Scheduler.Cancellable> remoteStableMasterHealthIndicatorTasks = null;
+    private volatile AtomicReference<Scheduler.Cancellable> remoteStableMasterHealthIndicatorTask = null;
     /*
      * This field holds the result of the tasks in the remoteStableMasterHealthIndicatorTasks field above. The field is accessed
      * (reads/writes) from multiple threads, and is also reassigned on multiple threads.
@@ -114,7 +114,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
     volatile AtomicReference<RemoteMasterHealthResult> remoteCoordinationDiagnosisResult = new AtomicReference<>();
 
     /*
-     * The previous two variables (remoteStableMasterHealthIndicatorTasks and remoteCoordinationDiagnosisResult) are reassigned on
+     * The previous two variables (remoteStableMasterHealthIndicatorTask and remoteCoordinationDiagnosisResult) are reassigned on
      * multiple threads. This mutex is used to protect those reassignments.
      */
     private final Object remoteDiagnosticsMutex = new Object();
@@ -701,12 +701,17 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
 
     private void beginPollingRemoteStableMasterHealthIndicatorService(Collection<DiscoveryNode> masterEligibleNodes) {
         synchronized (remoteDiagnosticsMutex) {
-            if (remoteStableMasterHealthIndicatorTasks == null) {
-                List<Scheduler.Cancellable> cancellables = new CopyOnWriteArrayList<>();
+            if (remoteStableMasterHealthIndicatorTask == null) {
+                AtomicReference<Scheduler.Cancellable> cancellableReference = new AtomicReference<>();
                 AtomicReference<RemoteMasterHealthResult> resultReference = new AtomicReference<>();
-                beginPollingRemoteStableMasterHealthIndicatorService(masterEligibleNodes, resultReference::set, cancellables::add);
-                remoteStableMasterHealthIndicatorTasks = cancellables;
-                remoteCoordinationDiagnosisResult = resultReference;
+                beginPollingRemoteStableMasterHealthIndicatorService(masterEligibleNodes, resultReference::set, cancellable -> {
+                    Scheduler.Cancellable previousCancellable = cancellableReference.getAndSet(cancellable);
+                    if (previousCancellable != null) {
+                        previousCancellable.cancel();
+                    }
+                    remoteStableMasterHealthIndicatorTask = cancellableReference;
+                    remoteCoordinationDiagnosisResult = resultReference;
+                });
             }
         }
     }
@@ -820,9 +825,9 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
 
     private void cancelPollingRemoteStableMasterHealthIndicatorService() {
         synchronized (remoteDiagnosticsMutex) {
-            if (remoteStableMasterHealthIndicatorTasks != null) {
-                remoteStableMasterHealthIndicatorTasks.forEach(Scheduler.Cancellable::cancel);
-                remoteStableMasterHealthIndicatorTasks = null;
+            if (remoteStableMasterHealthIndicatorTask != null) {
+                remoteStableMasterHealthIndicatorTask.get().cancel();
+                remoteStableMasterHealthIndicatorTask = null;
                 remoteCoordinationDiagnosisResult = new AtomicReference<>();
             }
         }
