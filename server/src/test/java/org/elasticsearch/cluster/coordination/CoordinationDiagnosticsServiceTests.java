@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -813,14 +814,16 @@ public class CoordinationDiagnosticsServiceTests extends AbstractCoordinatorTest
                 node.coordinationDiagnosticsService.beginPollingRemoteStableMasterHealthIndicatorService(
                     masterNodesNotIncludingElectedMaster,
                     healthResultsNotElectedMaster::add,
-                    cancellable -> {}
+                    cancellable -> {},
+                    new AtomicBoolean(false)
                 );
 
                 List<CoordinationDiagnosticsService.RemoteMasterHealthResult> healthResultsOriginalMaster = new ArrayList<>();
                 node.coordinationDiagnosticsService.beginPollingRemoteStableMasterHealthIndicatorService(
                     List.of(electedMaster.getLocalNode()),
                     healthResultsOriginalMaster::add,
-                    cancellable -> {}
+                    cancellable -> {},
+                    new AtomicBoolean(false)
                 );
 
                 cluster.runRandomly(false, true, EXTREME_DELAY_VARIABILITY);
@@ -908,16 +911,13 @@ public class CoordinationDiagnosticsServiceTests extends AbstractCoordinatorTest
                 .map(Cluster.ClusterNode::getLocalNode)
                 .filter(DiscoveryNode::isMasterNode)
                 .toList();
-            Cluster.ClusterNode electedMaster = cluster.getAnyLeader();
-            List<DiscoveryNode> masterNodesNotIncludingElectedMaster = masterNodes.stream()
-                .filter(node -> node.equals(electedMaster.getLocalNode()) == false)
-                .toList();
             cluster.clusterNodes.stream().filter(node -> node.getLocalNode().isMasterNode() == false).forEach(node -> {
                 List<CoordinationDiagnosticsService.RemoteMasterHealthResult> healthResults = new ArrayList<>();
                 node.coordinationDiagnosticsService.beginPollingRemoteStableMasterHealthIndicatorService(
                     masterNodes,
                     healthResults::add,
-                    Scheduler.Cancellable::cancel
+                    Scheduler.Cancellable::cancel,
+                    new AtomicBoolean(false)
                 );
 
                 cluster.runRandomly(false, true, EXTREME_DELAY_VARIABILITY);
