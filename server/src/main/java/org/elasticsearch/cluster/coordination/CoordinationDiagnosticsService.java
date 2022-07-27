@@ -374,6 +374,16 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
         return result;
     }
 
+    /**
+     * This method handles the case when we have not had an elected master node recently, and we are on a node that is not
+     * master-eligible. In this case we reach out to some master-eligible node in order to see what it knows about master stability.
+     * @param coordinator The Coordinator for this node
+     * @param nodeHasMasterLookupTimeframe The value of health.master_history.has_master_lookup_timeframe
+     * @param remoteCoordinationDiagnosisResult
+     * @param explain If true, details are returned
+     * @return A CoordinationDiagnosticsResult that will be determined by the CoordinationDiagnosticsResult returned by the remote
+     * master-eligible node
+     */
     static CoordinationDiagnosticsResult diagnoseOnHaveNotSeenMasterRecentlyAndWeAreNotMasterEligible(
         Coordinator coordinator,
         TimeValue nodeHasMasterLookupTimeframe,
