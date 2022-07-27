@@ -356,6 +356,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
             result = getResultOnCannotJoinLeader(localMasterHistory, currentMaster, explain);
         } else if (isLocalNodeMasterEligible == false) { // none is elected master and we aren't master eligible
             result = diagnoseOnHaveNotSeenMasterRecentlyAndWeAreNotMasterEligible(
+                localMasterHistory,
                 coordinator,
                 nodeHasMasterLookupTimeframe,
                 remoteCoordinationDiagnosisResult,
@@ -377,6 +378,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
     /**
      * This method handles the case when we have not had an elected master node recently, and we are on a node that is not
      * master-eligible. In this case we reach out to some master-eligible node in order to see what it knows about master stability.
+     * @param localMasterHistory The master history, as seen from this node
      * @param coordinator The Coordinator for this node
      * @param nodeHasMasterLookupTimeframe The value of health.master_history.has_master_lookup_timeframe
      * @param remoteCoordinationDiagnosisResult
@@ -385,6 +387,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
      * master-eligible node
      */
     static CoordinationDiagnosticsResult diagnoseOnHaveNotSeenMasterRecentlyAndWeAreNotMasterEligible(
+        MasterHistory localMasterHistory,
         Coordinator coordinator,
         TimeValue nodeHasMasterLookupTimeframe,
         AtomicReference<RemoteMasterHealthResult> remoteCoordinationDiagnosisResult,
@@ -403,7 +406,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
                 nodeHasMasterLookupTimeframe
             );
             if (explain) {
-                details = CoordinationDiagnosticsDetails.EMPTY; // TODO
+                details = CoordinationDiagnosticsDetails.EMPTY;
             } else {
                 details = CoordinationDiagnosticsDetails.EMPTY;
             }
@@ -441,7 +444,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener, Coo
                     remoteNode.getName()
                 );
                 if (explain) {
-                    details = CoordinationDiagnosticsDetails.EMPTY; // TODO: once we merge in #88020
+                    details = getDetails(true, localMasterHistory, exception, null);
                 } else {
                     details = CoordinationDiagnosticsDetails.EMPTY;
                 }
