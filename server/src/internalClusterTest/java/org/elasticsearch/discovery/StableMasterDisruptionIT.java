@@ -614,5 +614,8 @@ public class StableMasterDisruptionIT extends ESIntegTestCase {
         for (String nonActiveMasterNode : nonActiveMasterNodes) {
             assertMasterStability(internalCluster().client(nonActiveMasterNode), HealthStatus.RED, "unable to form a quorum");
         }
+        for (String dataNode : dataNodes) {
+            assertMasterStability(internalCluster().client(dataNode), HealthStatus.RED, "unable to form a quorum");
+        }
     }
 }
