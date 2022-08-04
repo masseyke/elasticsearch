@@ -170,6 +170,13 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
         this.nodeHasMasterLookupTimeframe = NODE_HAS_MASTER_LOOKUP_TIMEFRAME_SETTING.get(clusterService.getSettings());
         this.unacceptableNullTransitions = NO_MASTER_TRANSITIONS_THRESHOLD_SETTING.get(clusterService.getSettings());
         this.unacceptableIdentityChanges = IDENTITY_CHANGES_THRESHOLD_SETTING.get(clusterService.getSettings());
+        /*
+         * This is called here to cover an edge case -- when there are master-eligible nodes in the cluster but none of them has been
+         * elected master. In the most common case this node will receive a ClusterChangedEvent that results in this polling being
+         * cancelled almost immediately. If that does not happen, then we do in fact need to be polling. Unfortunately there is no way to
+         * tell at this point whether this node is master-eligible or not, so we kick this off regardless. On master-eligible nodes the
+         * results will always be harmlessly ignored.
+         */
         beginPollingRemoteMasterStabilityDiagnostic();
         clusterService.addListener(this);
     }
@@ -755,12 +762,10 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
         } else {
             cancelPollingClusterFormationInfo();
         }
-        if (clusterService.localNode().isMasterNode() == false) {
-            if (currentMaster == null) {
-                beginPollingRemoteMasterStabilityDiagnostic();
-            } else {
-                cancelPollingRemoteMasterStabilityDiagnostic();
-            }
+        if (currentMaster == null && clusterService.localNode().isMasterNode() == false) {
+            beginPollingRemoteMasterStabilityDiagnostic();
+        } else {
+            cancelPollingRemoteMasterStabilityDiagnostic();
         }
     }
 
