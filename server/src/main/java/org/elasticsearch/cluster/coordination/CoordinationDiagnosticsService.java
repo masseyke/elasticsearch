@@ -122,7 +122,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
      * user-configurable, but is non-final so that integration tests don't have to waste 10 seconds.
      */
     // Non-private for testing
-    TimeValue remoteRequestInitialDelay = new TimeValue(10, TimeUnit.SECONDS);
+    static TimeValue remoteRequestInitialDelay = new TimeValue(10, TimeUnit.SECONDS);
 
     private static final Logger logger = LogManager.getLogger(CoordinationDiagnosticsService.class);
 
@@ -386,8 +386,9 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
         AtomicReference<RemoteMasterHealthResult> remoteCoordinationDiagnosisResult,
         boolean explain
     ) {
-        RemoteMasterHealthResult remoteResultOrException = remoteCoordinationDiagnosisResult == null ? null :
-            remoteCoordinationDiagnosisResult.get();
+        RemoteMasterHealthResult remoteResultOrException = remoteCoordinationDiagnosisResult == null
+            ? null
+            : remoteCoordinationDiagnosisResult.get();
         final CoordinationDiagnosticsStatus status;
         final String summary;
         final CoordinationDiagnosticsDetails details;
@@ -699,8 +700,16 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
             }
         });
         // Coordinator does not report the local node, so add it:
-        if (clusterService.state() != null && clusterService.localNode() != null && clusterService.localNode().isMasterNode()) {
-            masterEligibleNodes.add(clusterService.localNode());
+        try {
+            if (clusterService.state() != null && clusterService.localNode() != null && clusterService.localNode().isMasterNode()) {
+                masterEligibleNodes.add(clusterService.localNode());
+            }
+        } catch (AssertionError e) {
+            /*
+             * Unfortunately there does not seem to be a way to tell if clusterService.state() will throw an AssertionError if assertions
+             * are enabled. In production with assertions disabled clusterService.state() will be null rather than throwing an
+             * AssertionError.
+             */
         }
         return masterEligibleNodes;
     }
