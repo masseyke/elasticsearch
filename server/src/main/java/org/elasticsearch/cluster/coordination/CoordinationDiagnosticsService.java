@@ -170,6 +170,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
         this.nodeHasMasterLookupTimeframe = NODE_HAS_MASTER_LOOKUP_TIMEFRAME_SETTING.get(clusterService.getSettings());
         this.unacceptableNullTransitions = NO_MASTER_TRANSITIONS_THRESHOLD_SETTING.get(clusterService.getSettings());
         this.unacceptableIdentityChanges = IDENTITY_CHANGES_THRESHOLD_SETTING.get(clusterService.getSettings());
+        beginPollingRemoteMasterStabilityDiagnostic();
         clusterService.addListener(this);
     }
 
@@ -385,7 +386,8 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
         AtomicReference<RemoteMasterHealthResult> remoteCoordinationDiagnosisResult,
         boolean explain
     ) {
-        RemoteMasterHealthResult remoteResultOrException = remoteCoordinationDiagnosisResult.get();
+        RemoteMasterHealthResult remoteResultOrException = remoteCoordinationDiagnosisResult == null ? null :
+            remoteCoordinationDiagnosisResult.get();
         final CoordinationDiagnosticsStatus status;
         final String summary;
         final CoordinationDiagnosticsDetails details;
@@ -688,7 +690,7 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
             }
         });
         // Coordinator does not report the local node, so add it:
-        if (clusterService.localNode().isMasterNode()) {
+        if (clusterService.state() != null && clusterService.localNode() != null && clusterService.localNode().isMasterNode()) {
             masterEligibleNodes.add(clusterService.localNode());
         }
         return masterEligibleNodes;
