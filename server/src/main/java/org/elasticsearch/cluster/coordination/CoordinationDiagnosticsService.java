@@ -897,7 +897,6 @@ public class CoordinationDiagnosticsService implements ClusterStateListener {
     }
 
     void beginPollingRemoteMasterStabilityDiagnostic() {
-        assert ThreadPool.assertCurrentThreadPool(ClusterApplierService.CLUSTER_UPDATE_THREAD_NAME);
         AtomicReference<Scheduler.Cancellable> cancellableReference = new AtomicReference<>();
         AtomicReference<RemoteMasterHealthResult> resultReference = new AtomicReference<>();
         remoteCoordinationDiagnosisTask = cancellableReference;
