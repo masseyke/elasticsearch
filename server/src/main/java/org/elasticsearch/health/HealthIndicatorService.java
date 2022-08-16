@@ -8,9 +8,12 @@
 
 package org.elasticsearch.health;
 
+import org.elasticsearch.health.node.DiskHealthInfo;
+
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -21,6 +24,10 @@ public interface HealthIndicatorService {
     String name();
 
     HealthIndicatorResult calculate(boolean explain);
+
+    default HealthIndicatorResult calculate(boolean explain, Map<String, DiskHealthInfo> diskHealthInfoMap) {
+        return calculate(explain);
+    }
 
     /**
      * This method creates a HealthIndicatorResult with the given information. Note that it sorts the impacts by severity (the lower the
