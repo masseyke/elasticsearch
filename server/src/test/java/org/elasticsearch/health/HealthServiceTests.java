@@ -9,6 +9,7 @@
 package org.elasticsearch.health;
 
 import org.elasticsearch.ResourceNotFoundException;
+import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.test.ESTestCase;
 
 import java.util.Collections;
@@ -24,6 +25,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
+import static org.mockito.Mockito.mock;
 
 public class HealthServiceTests extends ESTestCase {
 
@@ -41,12 +43,12 @@ public class HealthServiceTests extends ESTestCase {
                 createMockHealthIndicatorService(shardsAvailable)
             )
         );
+        NodeClient client = mock(NodeClient.class);
+        assertThat(service.getHealth(client, null, false), hasItems(slowTasks, networkLatency, shardsAvailable));
 
-        assertThat(service.getHealth(null, false), hasItems(slowTasks, networkLatency, shardsAvailable));
+        assertThat(service.getHealth(client, null, false), hasItems(slowTasks, networkLatency, networkLatency, slowTasks));
 
-        assertThat(service.getHealth(null, false), hasItems(slowTasks, networkLatency, networkLatency, slowTasks));
-
-        assertThat(service.getHealth("slow_task_assignment", false), hasItems(slowTasks));
+        assertThat(service.getHealth(client, "slow_task_assignment", false), hasItems(slowTasks));
     }
 
     public void testDuplicateIndicatorNames() {
@@ -68,7 +70,8 @@ public class HealthServiceTests extends ESTestCase {
                 createMockHealthIndicatorService(networkLatency)
             )
         );
-        expectThrows(AssertionError.class, () -> service.getHealth(null, true));
+        NodeClient client = mock(NodeClient.class);
+        expectThrows(AssertionError.class, () -> service.getHealth(client, null, true));
     }
 
     public void testMissingIndicator() {
@@ -84,8 +87,12 @@ public class HealthServiceTests extends ESTestCase {
                 createMockHealthIndicatorService(shardsAvailable)
             )
         );
-
-        expectThrows(ResourceNotFoundException.class, "Did not find indicator indicator99", () -> service.getHealth("indicator99", false));
+        NodeClient client = mock(NodeClient.class);
+        expectThrows(
+            ResourceNotFoundException.class,
+            "Did not find indicator indicator99",
+            () -> service.getHealth(client, "indicator99", false)
+        );
     }
 
     public void testPreflightIndicatorResultsPresent() {
@@ -104,19 +111,19 @@ public class HealthServiceTests extends ESTestCase {
                 createMockHealthIndicatorService(shardsAvailable)
             )
         );
-
+        NodeClient client = mock(NodeClient.class);
         // Get all indicators returns preflight result mixed in with the other indicators
-        List<HealthIndicatorResult> health = service.getHealth(null, false);
+        List<HealthIndicatorResult> health = service.getHealth(client, null, false);
         assertThat(health.size(), is(equalTo(4)));
         assertThat(health, containsInAnyOrder(hasMaster, networkLatency, slowTasks, shardsAvailable));
 
         // Getting single indicator returns correct indicator still
-        health = service.getHealth("slow_task_assignment", false);
+        health = service.getHealth(client, "slow_task_assignment", false);
         assertThat(health.size(), is(equalTo(1)));
         assertThat(health, contains(slowTasks));
 
         // Getting single preflight indicator returns preflight indicator correctly
-        health = service.getHealth("has_master", false);
+        health = service.getHealth(client, "has_master", false);
         assertThat(health.size(), is(equalTo(1)));
         assertThat(health, contains(hasMaster));
     }
@@ -143,9 +150,9 @@ public class HealthServiceTests extends ESTestCase {
                 createMockHealthIndicatorService(shardsAvailable)
             )
         );
-
+        NodeClient client = mock(NodeClient.class);
         {
-            List<HealthIndicatorResult> health = service.getHealth(null, false);
+            List<HealthIndicatorResult> health = service.getHealth(client, null, false);
             assertThat(health.size(), is(equalTo(5)));
             // Preflight indicators unchanged; posflight all say
             List<String> nonPreflightNames = Stream.of(networkLatency, slowTasks, shardsAvailable)
@@ -159,13 +166,13 @@ public class HealthServiceTests extends ESTestCase {
         }
 
         {
-            List<HealthIndicatorResult> health = service.getHealth("slow_task_assignment", false);
+            List<HealthIndicatorResult> health = service.getHealth(client, "slow_task_assignment", false);
             assertThat(health.size(), is(equalTo(1)));
             assertIndicatorIsUnknownStatus(health.get(0));
         }
 
         {
-            List<HealthIndicatorResult> health = service.getHealth("has_master", false);
+            List<HealthIndicatorResult> health = service.getHealth(client, "has_master", false);
             assertThat(health.size(), is(equalTo(1)));
             assertThat(health.get(0), is(equalTo(hasMaster)));
         }

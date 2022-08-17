@@ -60,7 +60,7 @@ public class LocalHealthMonitor implements ClusterStateListener {
 
     private final ClusterService clusterService;
     private final ThreadPool threadPool;
-    private final DiskCheck diskCheck; //TODO map of checks
+    private final DiskCheck diskCheck; // TODO map of checks
     private final Client client;
 
     private volatile TimeValue monitorInterval;
@@ -75,7 +75,7 @@ public class LocalHealthMonitor implements ClusterStateListener {
     private final AtomicBoolean inProgress = new AtomicBoolean();
 
     // Keeps the latest health state that was successfully reported to the current health node.
-    private final AtomicReference<DiskHealthInfo> lastReportedDiskHealthInfo = new AtomicReference<>(); //TODO map of type -> info
+    private final AtomicReference<DiskHealthInfo> lastReportedDiskHealthInfo = new AtomicReference<>(); // TODO map of type -> info
     // If we know there is no health node selected there is not point in collecting and sending data.
     private volatile boolean healthNodeSelected = false;
 
@@ -91,7 +91,7 @@ public class LocalHealthMonitor implements ClusterStateListener {
         this.enabled = HealthNodeTaskExecutor.ENABLED_SETTING.get(settings);
         this.clusterService = clusterService;
         this.client = client;
-        this.diskCheck = new DiskCheck(nodeService); //TODO initialize all checks
+        this.diskCheck = new DiskCheck(nodeService); // TODO initialize all checks
     }
 
     public static LocalHealthMonitor create(
@@ -153,7 +153,7 @@ public class LocalHealthMonitor implements ClusterStateListener {
             if (Objects.equals(previous, current) == false) {
                 // The new health node (probably) does not have any information yet, so the last
                 // reported health info gets reset to null.
-                lastReportedDiskHealthInfo.set(null); //TODO unset all
+                lastReportedDiskHealthInfo.set(null); // TODO unset all
                 healthNodeSelected = current != null;
                 if (healthNodeSelected) {
                     maybeScheduleNow();
@@ -167,7 +167,7 @@ public class LocalHealthMonitor implements ClusterStateListener {
             ClusterState clusterState = clusterService.state();
             HealthMetadata healthMetadata = HealthMetadata.getFromClusterState(clusterState);
             assert healthMetadata != null : "health metadata should have been initialized.";
-            //TODO for each check
+            // TODO for each check
             DiskHealthInfo previousHealth = this.lastReportedDiskHealthInfo.get();
             DiskHealthInfo currentHealth = diskCheck.getHealth(healthMetadata, clusterState);
             // TODO if different, put new and old in a map or set, end for

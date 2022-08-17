@@ -25,22 +25,32 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.util.List;
 
 public class UpdateHealthInfoCacheAction extends ActionType<AcknowledgedResponse> {
 
     public static class Request extends ActionRequest {
         private final String nodeId;
-        private final DiskHealthInfo diskHealthInfo;
+        private final List<HealthNodeInfo> healthNodeInfoList;
 
-        public Request(String nodeId, DiskHealthInfo diskHealthInfo) {
+        public Request(String nodeId, HealthNodeInfo... healthNodeInfo) {
             this.nodeId = nodeId;
-            this.diskHealthInfo = diskHealthInfo;
+            this.healthNodeInfoList = List.of(healthNodeInfo);
         }
 
         public Request(StreamInput in) throws IOException {
             super(in);
             this.nodeId = in.readString();
-            this.diskHealthInfo = in.readOptionalWriteable(DiskHealthInfo::new);
+            this.healthNodeInfoList = in.readList(input -> {
+                String infoClass = input.readString();
+                try {
+                    return (HealthNodeInfo) Class.forName(infoClass).getDeclaredConstructor(StreamInput.class).newInstance(in);
+                } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException
+                    | ClassNotFoundException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
 
         public String getNodeId() {
@@ -48,7 +58,10 @@ public class UpdateHealthInfoCacheAction extends ActionType<AcknowledgedResponse
         }
 
         public DiskHealthInfo getDiskHealthInfo() {
-            return diskHealthInfo;
+            return (DiskHealthInfo) healthNodeInfoList.stream()
+                .filter(x -> DiskHealthInfo.class.equals(x.getClass()))
+                .findAny()
+                .orElse(null);
         }
 
         @Override
@@ -60,7 +73,10 @@ public class UpdateHealthInfoCacheAction extends ActionType<AcknowledgedResponse
         public void writeTo(StreamOutput out) throws IOException {
             super.writeTo(out);
             out.writeString(nodeId);
-            out.writeOptionalWriteable(diskHealthInfo);
+            out.writeCollection(healthNodeInfoList, (output, healthNodeInfo) -> {
+                output.writeString(healthNodeInfo.getClass().getName());
+                healthNodeInfo.writeTo(output);
+            });
         }
     }
 

@@ -8,7 +8,7 @@
 
 package org.elasticsearch.health;
 
-import org.elasticsearch.health.node.DiskHealthInfo;
+import org.elasticsearch.health.node.HealthNodeInfo;
 
 import java.util.Collection;
 import java.util.Comparator;
@@ -23,9 +23,13 @@ public interface HealthIndicatorService {
 
     String name();
 
+    default Class<? extends HealthNodeInfo> getHealthNodeDataTypeRequired() {
+        return null;
+    }
+
     HealthIndicatorResult calculate(boolean explain);
 
-    default HealthIndicatorResult calculate(boolean explain, Map<String, DiskHealthInfo> diskHealthInfoMap) {
+    default HealthIndicatorResult calculate(boolean explain, Map<String, ? extends HealthNodeInfo> healthInfoMap) {
         return calculate(explain);
     }
 

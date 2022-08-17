@@ -91,7 +91,9 @@ public class HealthService {
             );
             FetchHealthInfoCacheAction.Response response = responseActionFuture.actionGet();
             // Calculate remaining indicators
-            filteredIndicatorResults = filteredIndicators.map(service -> service.calculate(explain, response.getDiskHealthInfoMap()));
+            filteredIndicatorResults = filteredIndicators.map(
+                service -> service.calculate(explain, response.getHealthNodeInfo(service.getHealthNodeDataTypeRequired()))
+            );
         } else {
             // Mark remaining indicators as UNKNOWN
             HealthIndicatorDetails unknownDetails = healthUnknownReason(preflightResults, explain);

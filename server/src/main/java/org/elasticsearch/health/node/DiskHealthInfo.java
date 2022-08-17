@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 /**
  * The health status of the disk space of this node along with the cause.
  */
-public record DiskHealthInfo(HealthStatus healthStatus, Cause cause) implements Writeable {
+public record DiskHealthInfo(HealthStatus healthStatus, Cause cause) implements HealthNodeInfo {
     DiskHealthInfo(HealthStatus healthStatus) {
         this(healthStatus, null);
     }
