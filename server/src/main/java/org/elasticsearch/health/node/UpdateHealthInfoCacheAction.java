@@ -27,6 +27,7 @@ import org.elasticsearch.transport.TransportService;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
+import java.util.Objects;
 
 public class UpdateHealthInfoCacheAction extends ActionType<AcknowledgedResponse> {
 
@@ -77,6 +78,18 @@ public class UpdateHealthInfoCacheAction extends ActionType<AcknowledgedResponse
                 output.writeString(healthNodeInfo.getClass().getName());
                 healthNodeInfo.writeTo(output);
             });
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            return healthNodeInfoList.equals(((Request) o).healthNodeInfoList);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(healthNodeInfoList);
         }
     }
 

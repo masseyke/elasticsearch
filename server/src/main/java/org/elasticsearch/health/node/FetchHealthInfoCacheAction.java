@@ -29,6 +29,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheAction.Response> {
 
@@ -46,6 +47,9 @@ public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheA
     }
 
     public static class Response extends ActionResponse {
+        /*
+         * This maps the HealthNodeInfo class to a Map of node name to the HealthNodeInfo object of that class for that node
+         */
         private final Map<
             Class<? extends HealthNodeInfo>,
             Map<String, ? extends HealthNodeInfo>> healthNodeInfoClassToNodeToHealthNodeInfoMap;
@@ -94,7 +98,6 @@ public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheA
                 output.writeString(entry.getKey().getName());
                 output.writeMap(entry.getValue(), StreamOutput::writeString, (out, value) -> value.writeTo(out));
             }
-            ;
         }
 
         @Override
@@ -114,9 +117,17 @@ public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheA
             return (Map<String, T>) healthNodeInfoClassToNodeToHealthNodeInfoMap.get(infoClass);
         }
 
-        @SuppressWarnings({ "unchecked" })
-        public Map<String, DiskHealthInfo> getDiskHealthInfoMap() {
-            return (Map<String, DiskHealthInfo>) healthNodeInfoClassToNodeToHealthNodeInfoMap.get(DiskHealthInfo.class);
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            FetchHealthInfoCacheAction.Response response = (FetchHealthInfoCacheAction.Response) o;
+            return healthNodeInfoClassToNodeToHealthNodeInfoMap.equals(response.healthNodeInfoClassToNodeToHealthNodeInfoMap);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(healthNodeInfoClassToNodeToHealthNodeInfoMap);
         }
     }
 
