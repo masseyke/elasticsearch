@@ -160,10 +160,7 @@ public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheA
             ClusterState clusterState,
             ActionListener<FetchHealthInfoCacheAction.Response> listener
         ) {
-            Map<String, DiskHealthInfo> diskHealthInfoMap = nodeHealthOverview.getDiskHealthInfo();
-            Map<Class<? extends HealthNodeInfo>, Map<String, ? extends HealthNodeInfo>> map = new HashMap<>();
-            map.put(DiskHealthInfo.class, diskHealthInfoMap);
-            listener.onResponse(new Response(map));
+            listener.onResponse(new Response(nodeHealthOverview.getHealthInfo()));
         }
     }
 }

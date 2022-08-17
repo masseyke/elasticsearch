@@ -15,7 +15,6 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.health.node.selection.HealthNode;
 
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -37,46 +36,12 @@ public class HealthInfoCache implements ClusterStateListener {
 
     @SuppressWarnings({ "unchecked", "rawtypes" })
     public <T extends HealthNodeInfo> void updateNodeHealth(String nodeId, T healthInfo) {
+        // TODO: This is not threadsafe
         if (healthInfoByTypeAndNode.containsKey(healthInfo.getClass()) == false) {
             healthInfoByTypeAndNode.put(healthInfo.getClass(), new HashMap<>());
         }
-        // HealthNodeInfo x = (HealthNodeInfo) healthInfo;
-        Map mup = healthInfoByTypeAndNode.get(healthInfo.getClass());
-        mup.put(nodeId, healthInfo);
-        // healthInfoByTypeAndNode.get(healthInfo.getClass()).put(nodeId, x);
-        // healthInfoByTypeAndNode.merge(healthInfo.getClass(), Map.of(nodeId, healthInfo),
-        // new BiFunction<Map<String, ? extends HealthNodeInfo>, Map<String, ? extends HealthNodeInfo>, Map<String, ? extends
-        // HealthNodeInfo>>() {
-        // @Override
-        // public Map<String, ? extends HealthNodeInfo> apply(Map<String, ? extends HealthNodeInfo> stringMap, Map<String, ? extends
-        // HealthNodeInfo> stringMap2) {
-        // return stringMap.put(nodeId, healthInfo);
-        // }
-        // });
-    }
-
-    public static void main(String[] args) {
-        Map<String, Integer> wordCounts = new LinkedHashMap<String, Integer>();
-
-        String s = "Lorem ipsum dolor sit amet consetetur iam nonumy sadipscing "
-            + "elitr, sed diam nonumy eirmod tempor invidunt ut erat sed "
-            + "labore et dolore magna dolor sit amet aliquyam erat sed diam";
-
-        // wordCounts.put("sed", 0);
-        // wordCounts.put("erat", 0);
-
-        for (String t : s.split(" ")) {
-            wordCounts.computeIfPresent(t, (k, v) -> v + 1);
-            wordCounts.computeIfAbsent(t, v -> 1);
-        }
-        System.out.println(wordCounts);
-
-        wordCounts = new LinkedHashMap<String, Integer>();
-        for (String t : s.split(" ")) {
-            wordCounts.merge(t, 1, (k, v) -> k + v);
-            // wordCounts.computeIfAbsent(t, v -> 1);
-        }
-        System.out.println(wordCounts);
+        Map map = healthInfoByTypeAndNode.get(healthInfo.getClass());
+        map.put(nodeId, healthInfo);
     }
 
     @Override
@@ -101,8 +66,7 @@ public class HealthInfoCache implements ClusterStateListener {
     }
 
     // A shallow copy is enough because the inner data is immutable.
-    @SuppressWarnings({ "unchecked" })
-    public Map<String, DiskHealthInfo> getDiskHealthInfo() {
-        return (Map<String, DiskHealthInfo>) Map.copyOf(healthInfoByTypeAndNode.get(DiskHealthInfo.class));
+    public Map<Class<? extends HealthNodeInfo>, Map<String, ? extends HealthNodeInfo>> getHealthInfo() {
+        return Map.copyOf(healthInfoByTypeAndNode);
     }
 }
