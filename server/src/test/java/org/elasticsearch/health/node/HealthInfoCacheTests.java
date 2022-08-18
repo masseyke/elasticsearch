@@ -50,6 +50,7 @@ public class HealthInfoCacheTests extends ESTestCase {
     );
     private final DiscoveryNode[] allNodes = new DiscoveryNode[] { node1, node2 };
 
+    @SuppressWarnings("unchecked")
     public void testAddHealthInfo() {
         HealthInfoCache healthInfoCache = HealthInfoCache.create(clusterService);
         healthInfoCache.updateNodeHealth(node1.getId(), GREEN);
@@ -63,6 +64,7 @@ public class HealthInfoCacheTests extends ESTestCase {
         assertThat(diskHealthInfo.get(node2.getId()), equalTo(RED));
     }
 
+    @SuppressWarnings("unchecked")
     public void testRemoveNodeFromTheCluster() {
         HealthInfoCache healthInfoCache = HealthInfoCache.create(clusterService);
         healthInfoCache.updateNodeHealth(node1.getId(), GREEN);
@@ -87,8 +89,6 @@ public class HealthInfoCacheTests extends ESTestCase {
         ClusterState current = ClusterStateCreationUtils.state(node1, node1, node2, allNodes);
         healthInfoCache.clusterChanged(new ClusterChangedEvent("test", current, previous));
 
-        Map<String, DiskHealthInfo> diskHealthInfo = (Map<String, DiskHealthInfo>) healthInfoCache.getHealthInfo()
-            .get(DiskHealthInfo.class);
-        assertThat(diskHealthInfo.isEmpty(), equalTo(true));
+        assertFalse(healthInfoCache.getHealthInfo().containsKey(DiskHealthInfo.class));
     }
 }

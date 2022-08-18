@@ -17,6 +17,7 @@ import org.elasticsearch.health.node.selection.HealthNode;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Keeps track of several health statuses per node that can be used in health.
@@ -65,8 +66,8 @@ public class HealthInfoCache implements ClusterStateListener {
         }
     }
 
-    // A shallow copy is enough because the inner data is immutable.
+    // A shallow copy of the inner maps is enough because the inner data is immutable.
     public Map<Class<? extends HealthNodeInfo>, Map<String, ? extends HealthNodeInfo>> getHealthInfo() {
-        return Map.copyOf(healthInfoByTypeAndNode);
+        return healthInfoByTypeAndNode.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> Map.copyOf(e.getValue())));
     }
 }
