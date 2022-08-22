@@ -131,14 +131,21 @@ public class LocalHealthMonitorTests extends ESTestCase {
         }).when(client).execute(any(), any(), any());
         simulateHealthDiskSpace();
         LocalHealthMonitor localHealthMonitor = LocalHealthMonitor.create(Settings.EMPTY, clusterService, nodeService, threadPool, client);
+        // We override the poll interval like this to avoid the min value set by the setting which is too high for this test
+        localHealthMonitor.setMonitorInterval(TimeValue.timeValueMillis(10));
         assertThat(localHealthMonitor.getLastReportedDiskHealthInfo(), nullValue());
         localHealthMonitor.clusterChanged(new ClusterChangedEvent("initialize", clusterState, ClusterState.EMPTY_STATE));
         localHealthMonitor.maybeScheduleNow();
         assertBusy(() -> assertThat(localHealthMonitor.getLastReportedDiskHealthInfo(), equalTo(green)));
+        assertThat(localHealthMonitor.isInProgress(), equalTo(false));
+        // Wait until the next run
+        waitUntil(localHealthMonitor::isInProgress);
+        // Ensure that the next run finished
+        assertBusy(() -> assertThat(localHealthMonitor.isInProgress(), equalTo(false)));
     }
 
     @SuppressWarnings("unchecked")
-    public void testDoNotUpdateHealthInfoOnFailure() {
+    public void testDoNotUpdateHealthInfoOnFailure() throws Exception {
         doAnswer(invocation -> {
             ActionListener<AcknowledgedResponse> listener = (ActionListener<AcknowledgedResponse>) invocation.getArguments()[2];
             listener.onFailure(new RuntimeException("simulated"));
@@ -150,6 +157,7 @@ public class LocalHealthMonitorTests extends ESTestCase {
         assertThat(localHealthMonitor.getLastReportedDiskHealthInfo(), nullValue());
         localHealthMonitor.maybeScheduleNow();
         assertRemainsUnchanged(localHealthMonitor::getLastReportedDiskHealthInfo, null);
+        assertBusy(() -> assertThat(localHealthMonitor.isInProgress(), equalTo(false)));
     }
 
     @SuppressWarnings("unchecked")
@@ -176,8 +184,10 @@ public class LocalHealthMonitorTests extends ESTestCase {
         localHealthMonitor.clusterChanged(new ClusterChangedEvent("start-up", previous, ClusterState.EMPTY_STATE));
         localHealthMonitor.maybeScheduleNow();
         assertBusy(() -> assertThat(localHealthMonitor.getLastReportedDiskHealthInfo(), equalTo(green)));
+        assertThat(localHealthMonitor.isInProgress(), equalTo(false));
         localHealthMonitor.clusterChanged(new ClusterChangedEvent("health-node-switch", current, previous));
         assertBusy(() -> assertThat(counter.get(), equalTo(2)));
+        assertBusy(() -> assertThat(localHealthMonitor.isInProgress(), equalTo(false)));
     }
 
     @SuppressWarnings("unchecked")
@@ -209,6 +219,7 @@ public class LocalHealthMonitorTests extends ESTestCase {
         localHealthMonitor.setEnabled(true);
         DiskHealthInfo nextHealthStatus = new DiskHealthInfo(HealthStatus.RED, DiskHealthInfo.Cause.NODE_OVER_THE_FLOOD_STAGE_THRESHOLD);
         assertBusy(() -> assertThat(localHealthMonitor.getLastReportedDiskHealthInfo(), equalTo(nextHealthStatus)));
+        assertBusy(() -> assertThat(localHealthMonitor.isInProgress(), equalTo(false)));
     }
 
     private void assertRemainsUnchanged(Supplier<DiskHealthInfo> supplier, DiskHealthInfo expected) {
