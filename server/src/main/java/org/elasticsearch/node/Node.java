@@ -1164,7 +1164,7 @@ public class Node implements Closeable {
         var serverHealthIndicatorServices = List.of(
             new RepositoryIntegrityHealthIndicatorService(clusterService),
             new ShardsAvailabilityHealthIndicatorService(clusterService, clusterModule.getAllocationService()),
-            new DiskHealthIndicatorService()
+            new DiskHealthIndicatorService(clusterService)
         );
         var pluginHealthIndicatorServices = pluginsService.filterPlugins(HealthPlugin.class)
             .stream()

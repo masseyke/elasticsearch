@@ -8,6 +8,9 @@
 
 package org.elasticsearch.health.node;
 
+import org.elasticsearch.cluster.metadata.IndexMetadata;
+import org.elasticsearch.cluster.metadata.Metadata;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.health.Diagnosis;
 import org.elasticsearch.health.HealthIndicatorDetails;
 import org.elasticsearch.health.HealthIndicatorImpact;
@@ -16,11 +19,17 @@ import org.elasticsearch.health.HealthIndicatorService;
 import org.elasticsearch.health.HealthStatus;
 import org.elasticsearch.health.ImpactArea;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class DiskHealthIndicatorService implements HealthIndicatorService {
     public static final String NAME = "disk_health";
+
+    private final ClusterService clusterService;
 
     private static final String DISK_PROBLEMS_INGEST_IMPACT = "The cluster cannot create, delete, or rebalance indices, and cannot "
         + "insert or update documents.";
@@ -34,7 +43,9 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
         new HealthIndicatorImpact(3, DISK_PROBLEMS_BACKUP_IMPACT, List.of(ImpactArea.BACKUP))
     );
 
-    public DiskHealthIndicatorService() {}
+    public DiskHealthIndicatorService(ClusterService clusterService) {
+        this.clusterService = clusterService;
+    }
 
     @Override
     public String name() {
@@ -53,23 +64,65 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
     @SuppressWarnings({ "unchecked" })
     @Override
     public HealthIndicatorResult calculate(boolean explain, Map<String, ? extends HealthNodeInfo> healthInfoMap) {
-        Map<String, DiskHealthInfo> diskHealthInfoMap = (Map<String, DiskHealthInfo>) healthInfoMap;
-        HealthStatus healthStatus = HealthStatus.merge(diskHealthInfoMap.values().stream().map(DiskHealthInfo::healthStatus));
-        String symptom;
-        HealthIndicatorDetails details = getDetails(explain, diskHealthInfoMap);
-        ;
-        List<HealthIndicatorImpact> impacts;
-        List<Diagnosis> diagnosisList;
-        if (HealthStatus.GREEN.equals(healthStatus)) {
-            symptom = "Disk usage is within configured thresholds";
-            impacts = List.of();
-            diagnosisList = List.of();
-        } else {
-            symptom = "Disk usage exceeds limits";
-            impacts = DISK_PROBLEMS_IMPACTS;
-            diagnosisList = getDiskProblemsDiagnosis(explain);
+        if (healthInfoMap == null) {
+            return createIndicator(
+                HealthStatus.UNKNOWN,
+                "No disk usage data",
+                HealthIndicatorDetails.EMPTY,
+                Collections.emptyList(),
+                Collections.emptyList()
+            );
         }
-        return new HealthIndicatorResult(NAME, healthStatus, symptom, details, impacts, diagnosisList);
+        // TODO: Do we need to make sure that we have a value for each node that's in the cluster state?
+        Map<String, DiskHealthInfo> diskHealthInfoMap = (Map<String, DiskHealthInfo>) healthInfoMap;
+        // TODO: Do we actually care about the cluster-level block (since it was probably intentionally done by the user)?
+        boolean hasGlobalReadOnlyAllowDeleteBlock = clusterService.state()
+            .blocks()
+            .global()
+            .stream()
+            .anyMatch(block -> block.equals(Metadata.CLUSTER_READ_ONLY_ALLOW_DELETE_BLOCK));
+        Set<String> indicesWithBlock = clusterService.state()
+            .blocks()
+            .indices()
+            .entrySet()
+            .stream()
+            .filter(entry -> entry.getValue().contains(IndexMetadata.INDEX_READ_ONLY_ALLOW_DELETE_BLOCK))
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toSet());
+        boolean hasIndexReadOnlyAllowDeleteBlock = indicesWithBlock.isEmpty() == false;
+        final HealthStatus healthStatus;
+        final String symptom;
+        HealthIndicatorDetails details = getDetails(explain, diskHealthInfoMap);
+        final List<HealthIndicatorImpact> impacts;
+        final List<Diagnosis> diagnosisList;
+        if (hasGlobalReadOnlyAllowDeleteBlock) {
+            healthStatus = HealthStatus.RED;
+            symptom = "Cluster has a read only / allow deletes block";
+            impacts = DISK_PROBLEMS_IMPACTS;
+            diagnosisList = getClusterReadOnlyBlockDiagnosis(explain);
+        } else if (hasIndexReadOnlyAllowDeleteBlock) {
+            healthStatus = HealthStatus.RED;
+            symptom = String.format(
+                Locale.ROOT,
+                "%d %s a read only / allow deletes block",
+                indicesWithBlock.size(),
+                indicesWithBlock.size() > 1 ? "indices have" : "index has"
+            );
+            impacts = DISK_PROBLEMS_IMPACTS;
+            diagnosisList = getIndexReadOnlyBlockDiagnosis(explain);
+        } else {
+            healthStatus = HealthStatus.merge(diskHealthInfoMap.values().stream().map(DiskHealthInfo::healthStatus));
+            if (HealthStatus.GREEN.equals(healthStatus)) {
+                symptom = "Disk usage is within configured thresholds";
+                impacts = List.of();
+                diagnosisList = List.of();
+            } else {
+                symptom = "Disk usage exceeds limits";
+                impacts = DISK_PROBLEMS_IMPACTS;
+                diagnosisList = getDiskProblemsDiagnosis(explain);
+            }
+        }
+        return createIndicator(healthStatus, symptom, details, impacts, diagnosisList);
     }
 
     private HealthIndicatorDetails getDetails(boolean explain, Map<String, DiskHealthInfo> diskHealthInfoMap) {
@@ -95,6 +148,58 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
     }
 
     private List<Diagnosis> getDiskProblemsDiagnosis(boolean explain) {
+        if (explain == false) {
+            return List.of();
+        }
+        return List.of(
+            new Diagnosis(
+                new Diagnosis.Definition(
+                    "free-disk-space",
+                    "Disk thresholds have been exceeded",
+                    "Free up disk space",
+                    "https://ela.st/free-disk-space"
+                ),
+                null
+            ),
+            new Diagnosis(
+                new Diagnosis.Definition(
+                    "add-disk-capacity",
+                    "Disk thresholds have been exceeded",
+                    "Add disk capacity",
+                    "https://ela.st/increase-disk-capacity"
+                ),
+                null
+            )
+        );
+    }
+
+    private List<Diagnosis> getClusterReadOnlyBlockDiagnosis(boolean explain) {
+        if (explain == false) {
+            return List.of();
+        }
+        return List.of(
+            new Diagnosis(
+                new Diagnosis.Definition(
+                    "free-disk-space",
+                    "Disk thresholds have been exceeded",
+                    "Free up disk space",
+                    "https://ela.st/free-disk-space"
+                ),
+                null
+            ),
+            new Diagnosis(
+                new Diagnosis.Definition(
+                    "add-disk-capacity",
+                    "Disk thresholds have been exceeded",
+                    "Add disk capacity",
+                    "https://ela.st/increase-disk-capacity"
+                ),
+                null
+            )
+        );
+    }
+
+    private List<Diagnosis> getIndexReadOnlyBlockDiagnosis(boolean explain) {
         if (explain == false) {
             return List.of();
         }
