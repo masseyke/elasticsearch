@@ -117,7 +117,43 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
                 impacts = List.of();
                 diagnosisList = List.of();
             } else {
-                symptom = "Disk usage exceeds limits";
+                if (HealthStatus.RED.equals(healthStatus)) {
+                    final int nodesLimit = 5;
+                    Set<String> redNodes = diskHealthInfoMap.entrySet()
+                        .stream()
+                        .filter(entry -> HealthStatus.RED.equals(entry.getValue().healthStatus()))
+                        .map(Map.Entry::getKey)
+                        .collect(Collectors.toSet());
+                    String redNodesString = redNodes.stream().limit(nodesLimit).collect(Collectors.joining(", "));
+                    boolean hadToTruncate = redNodes.size() > nodesLimit;
+                    int numberTruncated = hadToTruncate ? redNodes.size() - nodesLimit : 0;
+                    symptom = String.format(
+                        Locale.ROOT,
+                        "Node%s %s%s %s out of disk space",
+                        redNodes.size() > 1 ? "s" : "",
+                        redNodesString,
+                        hadToTruncate ? String.format(Locale.ROOT, ", and %d more", numberTruncated) : "",
+                        redNodes.size() > 1 ? "are" : "is"
+                    );
+                } else {
+                    final int nodesLimit = 5;
+                    Set<String> yellowNodes = diskHealthInfoMap.entrySet()
+                        .stream()
+                        .filter(entry -> HealthStatus.YELLOW.equals(entry.getValue().healthStatus()))
+                        .map(Map.Entry::getKey)
+                        .collect(Collectors.toSet());
+                    String yellowNodesString = yellowNodes.stream().limit(nodesLimit).collect(Collectors.joining(", "));
+                    boolean hadToTruncate = yellowNodes.size() > nodesLimit;
+                    int numberTruncated = hadToTruncate ? yellowNodes.size() - nodesLimit : 0;
+                    symptom = String.format(
+                        Locale.ROOT,
+                        "Node%s %s%s ha%s increased disk usage",
+                        yellowNodes.size() > 1 ? "s" : "",
+                        yellowNodesString,
+                        hadToTruncate ? String.format(Locale.ROOT, ", and %d more", numberTruncated) : "",
+                        yellowNodes.size() > 1 ? "ve" : "s"
+                    );
+                }
                 impacts = DISK_PROBLEMS_IMPACTS;
                 diagnosisList = getDiskProblemsDiagnosis(explain);
             }
