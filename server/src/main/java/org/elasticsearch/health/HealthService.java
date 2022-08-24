@@ -9,7 +9,11 @@
 package org.elasticsearch.health;
 
 import org.elasticsearch.ResourceNotFoundException;
+import org.elasticsearch.action.ActionFuture;
+import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.health.node.FetchHealthInfoCacheAction;
+import org.elasticsearch.health.node.HealthInfo;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -66,10 +70,10 @@ public class HealthService {
      * @return A list of all HealthIndicatorResult if indicatorName is null, or one HealthIndicatorResult if indicatorName is not null
      * @throws ResourceNotFoundException if an indicator name is given and the indicator is not found
      */
-    public List<HealthIndicatorResult> getHealth(@Nullable String indicatorName, boolean explain) {
+    public List<HealthIndicatorResult> getHealth(NodeClient client, @Nullable String indicatorName, boolean explain) {
         // Determine if cluster is stable enough to calculate health before running other indicators
         List<HealthIndicatorResult> preflightResults = preflightHealthIndicatorServices.stream()
-            .map(service -> service.calculate(explain))
+            .map(service -> service.calculate(explain, HealthInfo.EMPTY_HEALTH_INFO))
             .toList();
 
         // If any of these are not GREEN, then we cannot obtain health from other indicators
@@ -83,7 +87,13 @@ public class HealthService {
         Stream<HealthIndicatorResult> filteredIndicatorResults;
         if (clusterHealthIsObtainable) {
             // Calculate remaining indicators
-            filteredIndicatorResults = filteredIndicators.map(service -> service.calculate(explain));
+            ActionFuture<FetchHealthInfoCacheAction.Response> responseActionFuture = client.execute(
+                FetchHealthInfoCacheAction.INSTANCE,
+                new FetchHealthInfoCacheAction.Request()
+            );
+            FetchHealthInfoCacheAction.Response response = responseActionFuture.actionGet();
+            // Calculate remaining indicators
+            filteredIndicatorResults = filteredIndicators.map(service -> service.calculate(explain, response.getHealthInfo()));
         } else {
             // Mark remaining indicators as UNKNOWN
             HealthIndicatorDetails unknownDetails = healthUnknownReason(preflightResults, explain);
