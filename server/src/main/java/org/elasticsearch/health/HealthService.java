@@ -14,6 +14,7 @@ import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.health.node.FetchHealthInfoCacheAction;
 import org.elasticsearch.health.node.HealthInfo;
+import org.elasticsearch.health.node.selection.HealthNode;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -86,14 +87,19 @@ public class HealthService {
 
         Stream<HealthIndicatorResult> filteredIndicatorResults;
         if (clusterHealthIsObtainable) {
+            final HealthInfo healthInfo;
+            if (HealthNode.isEnabled()) {
+                ActionFuture<FetchHealthInfoCacheAction.Response> responseActionFuture = client.execute(
+                    FetchHealthInfoCacheAction.INSTANCE,
+                    new FetchHealthInfoCacheAction.Request()
+                );
+                FetchHealthInfoCacheAction.Response response = responseActionFuture.actionGet();
+                healthInfo = response.getHealthInfo();
+            } else {
+                healthInfo = HealthInfo.EMPTY_HEALTH_INFO;
+            }
             // Calculate remaining indicators
-            ActionFuture<FetchHealthInfoCacheAction.Response> responseActionFuture = client.execute(
-                FetchHealthInfoCacheAction.INSTANCE,
-                new FetchHealthInfoCacheAction.Request()
-            );
-            FetchHealthInfoCacheAction.Response response = responseActionFuture.actionGet();
-            // Calculate remaining indicators
-            filteredIndicatorResults = filteredIndicators.map(service -> service.calculate(explain, response.getHealthInfo()));
+            filteredIndicatorResults = filteredIndicators.map(service -> service.calculate(explain, healthInfo));
         } else {
             // Mark remaining indicators as UNKNOWN
             HealthIndicatorDetails unknownDetails = healthUnknownReason(preflightResults, explain);

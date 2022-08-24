@@ -15,6 +15,7 @@ import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.health.node.DiskHealthInfo;
 import org.elasticsearch.health.node.FetchHealthInfoCacheAction;
 import org.elasticsearch.health.node.HealthInfo;
+import org.elasticsearch.health.node.selection.HealthNode;
 import org.elasticsearch.test.ESTestCase;
 
 import java.util.Collections;
@@ -259,7 +260,7 @@ public class HealthServiceTests extends ESTestCase {
 
             @Override
             public HealthIndicatorResult calculate(boolean explain, HealthInfo healthInfo) {
-                if (expectedHealthInfo != null) {
+                if (expectedHealthInfo != null && HealthNode.isEnabled()) {
                     assertThat(healthInfo, equalTo(expectedHealthInfo));
                 }
                 return result;
