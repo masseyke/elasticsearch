@@ -109,7 +109,7 @@ public class FetchHealthInfoCacheActionTests extends ESTestCase {
         setState(clusterService, ClusterStateCreationUtils.state(localNode, localNode, localNode, allNodes));
         HealthInfoCache healthInfoCache = getTestHealthInfoCache();
         final FetchHealthInfoCacheAction.Response expectedResponse = new FetchHealthInfoCacheAction.Response(
-            healthInfoCache.getDiskHealthInfo()
+            new HealthInfo(healthInfoCache.getHealthInfo().diskInfoByNode())
         );
         ActionTestUtils.execute(
             new FetchHealthInfoCacheAction.TransportAction(
@@ -125,7 +125,7 @@ public class FetchHealthInfoCacheActionTests extends ESTestCase {
         );
         FetchHealthInfoCacheAction.Response actualResponse = listener.get();
         assertThat(actualResponse, equalTo(expectedResponse));
-        assertThat(actualResponse.getDiskHealthInfo(), equalTo(expectedResponse.getDiskHealthInfo()));
+        assertThat(actualResponse.getHealthInfo(), equalTo(expectedResponse.getHealthInfo()));
     }
 
     private HealthInfoCache getTestHealthInfoCache() {
@@ -142,7 +142,7 @@ public class FetchHealthInfoCacheActionTests extends ESTestCase {
 
     public void testResponseSerialization() {
         FetchHealthInfoCacheAction.Response response = new FetchHealthInfoCacheAction.Response(
-            getTestHealthInfoCache().getDiskHealthInfo()
+            new HealthInfo(getTestHealthInfoCache().getHealthInfo().diskInfoByNode())
         );
         EqualsHashCodeTestUtils.checkEqualsAndHashCode(
             response,
@@ -152,12 +152,12 @@ public class FetchHealthInfoCacheActionTests extends ESTestCase {
     }
 
     private FetchHealthInfoCacheAction.Response mutateResponse(FetchHealthInfoCacheAction.Response originalResponse) {
-        Map<String, DiskHealthInfo> diskHealthInfoMap = originalResponse.getDiskHealthInfo();
+        Map<String, DiskHealthInfo> diskHealthInfoMap = originalResponse.getHealthInfo().diskInfoByNode();
         Map<String, DiskHealthInfo> diskHealthInfoMapCopy = new HashMap<>(diskHealthInfoMap);
         diskHealthInfoMapCopy.put(
             randomAlphaOfLength(10),
             new DiskHealthInfo(randomFrom(HealthStatus.values()), randomFrom(DiskHealthInfo.Cause.values()))
         );
-        return new FetchHealthInfoCacheAction.Response(diskHealthInfoMapCopy);
+        return new FetchHealthInfoCacheAction.Response(new HealthInfo(diskHealthInfoMapCopy));
     }
 }

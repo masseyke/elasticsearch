@@ -25,9 +25,12 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.Objects;
 
+/**
+ * This action retrieves all the HealthInfo data from the health node. It is meant to be used when a user makes a health API request. The
+ * data that this action retrieves is populated by UpdateHealthInfoCacheAction.
+ */
 public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheAction.Response> {
 
     public static class Request extends ActionRequest {
@@ -44,26 +47,23 @@ public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheA
     }
 
     public static class Response extends ActionResponse {
-        /*
-         * This maps the HealthNodeInfo class to a Map of node name to the HealthNodeInfo object of that class for that node
-         */
-        private final Map<String, DiskHealthInfo> diskInfoByNode;
+        private final HealthInfo healthInfo;
 
-        public Response(final Map<String, DiskHealthInfo> diskInfoByNode) {
-            this.diskInfoByNode = diskInfoByNode;
+        public Response(final HealthInfo healthInfo) {
+            this.healthInfo = healthInfo;
         }
 
         public Response(StreamInput input) throws IOException {
-            this.diskInfoByNode = input.readMap(StreamInput::readString, DiskHealthInfo::new);
+            this.healthInfo = new HealthInfo(input);
         }
 
         @Override
         public void writeTo(StreamOutput output) throws IOException {
-            output.writeMap(diskInfoByNode, StreamOutput::writeString, (out, diskHealthInfo) -> diskHealthInfo.writeTo(out));
+            this.healthInfo.writeTo(output);
         }
 
-        public Map<String, DiskHealthInfo> getDiskHealthInfo() {
-            return Map.copyOf(diskInfoByNode);
+        public HealthInfo getHealthInfo() {
+            return healthInfo;
         }
 
         @Override
@@ -71,12 +71,12 @@ public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheA
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             FetchHealthInfoCacheAction.Response response = (FetchHealthInfoCacheAction.Response) o;
-            return diskInfoByNode.equals(response.diskInfoByNode);
+            return healthInfo.equals(response.healthInfo);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(diskInfoByNode);
+            return Objects.hash(healthInfo);
         }
     }
 
@@ -120,7 +120,7 @@ public class FetchHealthInfoCacheAction extends ActionType<FetchHealthInfoCacheA
             ClusterState clusterState,
             ActionListener<FetchHealthInfoCacheAction.Response> listener
         ) {
-            listener.onResponse(new Response(nodeHealthOverview.getDiskHealthInfo()));
+            listener.onResponse(new Response(nodeHealthOverview.getHealthInfo()));
         }
     }
 }
