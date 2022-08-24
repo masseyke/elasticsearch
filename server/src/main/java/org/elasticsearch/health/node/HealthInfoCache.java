@@ -59,6 +59,10 @@ public class HealthInfoCache implements ClusterStateListener {
         return getHealthInfo().diskInfoByNode();
     }
 
+    /**
+     * This returns all of the health info stored in this cache
+     * @return A HealthInfo object wrapping all health data in the cache
+     */
     public HealthInfo getHealthInfo() {
         // A shallow copy is enough because the inner data is immutable.
         return new HealthInfo(Map.copyOf(diskInfoByNode));
