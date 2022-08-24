@@ -104,6 +104,7 @@ import org.elasticsearch.gateway.PersistedClusterStateService;
 import org.elasticsearch.health.HealthIndicatorService;
 import org.elasticsearch.health.HealthService;
 import org.elasticsearch.health.metadata.HealthMetadataService;
+import org.elasticsearch.health.node.DiskHealthIndicatorService;
 import org.elasticsearch.health.node.HealthInfoCache;
 import org.elasticsearch.health.node.LocalHealthMonitor;
 import org.elasticsearch.health.node.selection.HealthNode;
@@ -1160,10 +1161,13 @@ public class Node implements Closeable {
         List<HealthIndicatorService> preflightHealthIndicatorServices = Collections.singletonList(
             new StableMasterHealthIndicatorService(coordinationDiagnosticsService)
         );
-        var serverHealthIndicatorServices = List.of(
+        var serverHealthIndicatorServices = new ArrayList<>(List.of(
             new RepositoryIntegrityHealthIndicatorService(clusterService),
             new ShardsAvailabilityHealthIndicatorService(clusterService, clusterModule.getAllocationService())
-        );
+        ));
+        if (HealthNode.isEnabled()) {
+            serverHealthIndicatorServices.add(new DiskHealthIndicatorService(clusterService));
+        }
         var pluginHealthIndicatorServices = pluginsService.filterPlugins(HealthPlugin.class)
             .stream()
             .flatMap(plugin -> plugin.getHealthIndicatorServices().stream())
