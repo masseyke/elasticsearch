@@ -9,6 +9,7 @@
 package org.elasticsearch.health.node;
 
 import org.elasticsearch.cluster.metadata.IndexMetadata;
+import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.health.Diagnosis;
 import org.elasticsearch.health.HealthIndicatorDetails;
@@ -90,51 +91,67 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
             impacts = DISK_PROBLEMS_IMPACTS;
             diagnosisList = getIndexReadOnlyBlockDiagnosis(explain);
         } else {
-            healthStatus = HealthStatus.merge(diskHealthInfoMap.values().stream().map(DiskHealthInfo::healthStatus));
-            if (HealthStatus.GREEN.equals(healthStatus)) {
-                symptom = "Disk usage is within configured thresholds";
-                impacts = List.of();
-                diagnosisList = List.of();
-            } else {
-                if (HealthStatus.RED.equals(healthStatus)) {
-                    final int nodesLimit = 5;
-                    Set<String> redNodes = diskHealthInfoMap.entrySet()
-                        .stream()
-                        .filter(entry -> HealthStatus.RED.equals(entry.getValue().healthStatus()))
-                        .map(Map.Entry::getKey)
-                        .collect(Collectors.toSet());
-                    String redNodesString = redNodes.stream().limit(nodesLimit).collect(Collectors.joining(", "));
-                    boolean hadToTruncate = redNodes.size() > nodesLimit;
-                    int numberTruncated = hadToTruncate ? redNodes.size() - nodesLimit : 0;
-                    symptom = String.format(
-                        Locale.ROOT,
-                        "Node%s %s%s %s out of disk space",
-                        redNodes.size() > 1 ? "s" : "",
-                        redNodesString,
-                        hadToTruncate ? String.format(Locale.ROOT, ", and %d more", numberTruncated) : "",
-                        redNodes.size() > 1 ? "are" : "is"
-                    );
-                } else {
-                    final int nodesLimit = 5;
-                    Set<String> yellowNodes = diskHealthInfoMap.entrySet()
-                        .stream()
-                        .filter(entry -> HealthStatus.YELLOW.equals(entry.getValue().healthStatus()))
-                        .map(Map.Entry::getKey)
-                        .collect(Collectors.toSet());
-                    String yellowNodesString = yellowNodes.stream().limit(nodesLimit).collect(Collectors.joining(", "));
-                    boolean hadToTruncate = yellowNodes.size() > nodesLimit;
-                    int numberTruncated = hadToTruncate ? yellowNodes.size() - nodesLimit : 0;
-                    symptom = String.format(
-                        Locale.ROOT,
-                        "Node%s %s%s ha%s increased disk usage",
-                        yellowNodes.size() > 1 ? "s" : "",
-                        yellowNodesString,
-                        hadToTruncate ? String.format(Locale.ROOT, ", and %d more", numberTruncated) : "",
-                        yellowNodes.size() > 1 ? "ve" : "s"
-                    );
-                }
+            Set<String> nodeIdsInClusterState = clusterService.state()
+                .nodes()
+                .stream()
+                .map(DiscoveryNode::getId)
+                .collect(Collectors.toSet());
+            Set<String> nodeIdsInHealthInfo = diskHealthInfoMap.keySet();
+            if (nodeIdsInClusterState.containsAll(nodeIdsInHealthInfo) == false) {
+                /*
+                 * There are some nodes that we don't have information about, so return UNKNOWN
+                 */
+                healthStatus = HealthStatus.UNKNOWN;
                 impacts = DISK_PROBLEMS_IMPACTS;
+                symptom = "Some nodes are not reporting disk usage";
                 diagnosisList = getDiskProblemsDiagnosis(explain);
+            } else {
+                healthStatus = HealthStatus.merge(diskHealthInfoMap.values().stream().map(DiskHealthInfo::healthStatus));
+                if (HealthStatus.GREEN.equals(healthStatus)) {
+                    symptom = "Disk usage is within configured thresholds";
+                    impacts = List.of();
+                    diagnosisList = List.of();
+                } else {
+                    if (HealthStatus.RED.equals(healthStatus)) {
+                        final int nodesLimit = 5;
+                        Set<String> redNodes = diskHealthInfoMap.entrySet()
+                            .stream()
+                            .filter(entry -> HealthStatus.RED.equals(entry.getValue().healthStatus()))
+                            .map(Map.Entry::getKey)
+                            .collect(Collectors.toSet());
+                        String redNodesString = redNodes.stream().limit(nodesLimit).collect(Collectors.joining(", "));
+                        boolean hadToTruncate = redNodes.size() > nodesLimit;
+                        int numberTruncated = hadToTruncate ? redNodes.size() - nodesLimit : 0;
+                        symptom = String.format(
+                            Locale.ROOT,
+                            "Node%s %s%s %s out of disk space",
+                            redNodes.size() > 1 ? "s" : "",
+                            redNodesString,
+                            hadToTruncate ? String.format(Locale.ROOT, ", and %d more", numberTruncated) : "",
+                            redNodes.size() > 1 ? "are" : "is"
+                        );
+                    } else {
+                        final int nodesLimit = 5;
+                        Set<String> yellowNodes = diskHealthInfoMap.entrySet()
+                            .stream()
+                            .filter(entry -> HealthStatus.YELLOW.equals(entry.getValue().healthStatus()))
+                            .map(Map.Entry::getKey)
+                            .collect(Collectors.toSet());
+                        String yellowNodesString = yellowNodes.stream().limit(nodesLimit).collect(Collectors.joining(", "));
+                        boolean hadToTruncate = yellowNodes.size() > nodesLimit;
+                        int numberTruncated = hadToTruncate ? yellowNodes.size() - nodesLimit : 0;
+                        symptom = String.format(
+                            Locale.ROOT,
+                            "Node%s %s%s ha%s increased disk usage",
+                            yellowNodes.size() > 1 ? "s" : "",
+                            yellowNodesString,
+                            hadToTruncate ? String.format(Locale.ROOT, ", and %d more", numberTruncated) : "",
+                            yellowNodes.size() > 1 ? "ve" : "s"
+                        );
+                    }
+                    impacts = DISK_PROBLEMS_IMPACTS;
+                    diagnosisList = getDiskProblemsDiagnosis(explain);
+                }
             }
         }
         return createIndicator(healthStatus, symptom, details, impacts, diagnosisList);
