@@ -97,7 +97,7 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
                 .map(DiscoveryNode::getId)
                 .collect(Collectors.toSet());
             Set<String> nodeIdsInHealthInfo = diskHealthInfoMap.keySet();
-            if (nodeIdsInClusterState.containsAll(nodeIdsInHealthInfo) == false) {
+            if (nodeIdsInHealthInfo.containsAll(nodeIdsInClusterState) == false) {
                 /*
                  * There are some nodes that we don't have information about, so return UNKNOWN
                  */

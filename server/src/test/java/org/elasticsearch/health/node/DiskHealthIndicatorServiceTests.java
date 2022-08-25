@@ -72,6 +72,39 @@ public class DiskHealthIndicatorServiceTests extends ESTestCase {
         }
     }
 
+    public void testMissingHealthInfo() {
+        Set<DiscoveryNode> discoveryNodes = createNodes();
+        Set<DiscoveryNode> discoveryNodesInClusterState = new HashSet<>(discoveryNodes);
+        discoveryNodesInClusterState.add(
+            new DiscoveryNode(
+                randomAlphaOfLength(30),
+                UUID.randomUUID().toString(),
+                buildNewFakeTransportAddress(),
+                Collections.emptyMap(),
+                DiscoveryNodeRole.roles(),
+                Version.CURRENT
+            )
+        );
+        ClusterService clusterService = createClusterService(false, discoveryNodesInClusterState);
+        DiskHealthIndicatorService diskHealthIndicatorService = new DiskHealthIndicatorService(clusterService);
+        HealthStatus expectedStatus = HealthStatus.UNKNOWN;
+        {
+            HealthInfo healthInfo = createHealthInfo(HealthStatus.GREEN, discoveryNodes);
+            HealthIndicatorResult result = diskHealthIndicatorService.calculate(true, healthInfo);
+            assertThat(result.status(), equalTo(expectedStatus));
+        }
+        {
+            HealthInfo healthInfo = createHealthInfo(HealthStatus.YELLOW, discoveryNodes);
+            HealthIndicatorResult result = diskHealthIndicatorService.calculate(true, healthInfo);
+            assertThat(result.status(), equalTo(expectedStatus));
+        }
+        {
+            HealthInfo healthInfo = createHealthInfo(HealthStatus.RED, discoveryNodes);
+            HealthIndicatorResult result = diskHealthIndicatorService.calculate(true, healthInfo);
+            assertThat(result.status(), equalTo(expectedStatus));
+        }
+    }
+
     private Set<DiscoveryNode> createNodes() {
         int numberOfNodes = randomIntBetween(1, 200);
         Set<DiscoveryNode> discoveryNodes = new HashSet<>();
