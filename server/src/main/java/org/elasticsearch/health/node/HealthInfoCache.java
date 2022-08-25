@@ -55,12 +55,8 @@ public class HealthInfoCache implements ClusterStateListener {
         }
     }
 
-    public Map<String, DiskHealthInfo> getDiskHealthInfo() {
-        return getHealthInfo().diskInfoByNode();
-    }
-
     /**
-     * This returns all of the health info stored in this cache
+     * This returns all the health info stored in this cache
      * @return A HealthInfo object wrapping all health data in the cache
      */
     public HealthInfo getHealthInfo() {

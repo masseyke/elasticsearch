@@ -8,15 +8,21 @@
 
 package org.elasticsearch.health.node;
 
+import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.health.HealthStatus;
-import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.EqualsHashCodeTestUtils;
+import org.elasticsearch.test.AbstractWireSerializingTestCase;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public class HealthInfoTests extends ESTestCase {
-    public void testResponseSerialization() {
+public class HealthInfoTests extends AbstractWireSerializingTestCase<HealthInfo> {
+    @Override
+    protected Writeable.Reader<HealthInfo> instanceReader() {
+        return HealthInfo::new;
+    }
+
+    @Override
+    protected HealthInfo createTestInstance() {
         int numberOfNodes = randomIntBetween(0, 200);
         Map<String, DiskHealthInfo> diskInfoByNode = new HashMap<>(numberOfNodes);
         for (int i = 0; i < numberOfNodes; i++) {
@@ -25,15 +31,11 @@ public class HealthInfoTests extends ESTestCase {
                 : new DiskHealthInfo(randomFrom(HealthStatus.values()), randomFrom(DiskHealthInfo.Cause.values()));
             diskInfoByNode.put(randomAlphaOfLengthBetween(10, 100), diskHealthInfo);
         }
-        HealthInfo healthInfo = new HealthInfo(diskInfoByNode);
-        EqualsHashCodeTestUtils.checkEqualsAndHashCode(
-            healthInfo,
-            healthInfoWritable -> copyWriteable(healthInfoWritable, writableRegistry(), HealthInfo::new),
-            this::mutateHealthInfo
-        );
+        return new HealthInfo(diskInfoByNode);
     }
 
-    private HealthInfo mutateHealthInfo(HealthInfo originalHealthInfo) {
+    @Override
+    public HealthInfo mutateInstance(HealthInfo originalHealthInfo) {
         Map<String, DiskHealthInfo> diskHealthInfoMap = originalHealthInfo.diskInfoByNode();
         Map<String, DiskHealthInfo> diskHealthInfoMapCopy = new HashMap<>(diskHealthInfoMap);
         switch (randomIntBetween(1, 3)) {
@@ -74,6 +76,5 @@ public class HealthInfoTests extends ESTestCase {
             default -> throw new IllegalStateException();
         }
         return new HealthInfo(diskHealthInfoMapCopy);
-
     }
 }
