@@ -1161,10 +1161,12 @@ public class Node implements Closeable {
         List<HealthIndicatorService> preflightHealthIndicatorServices = Collections.singletonList(
             new StableMasterHealthIndicatorService(coordinationDiagnosticsService)
         );
-        var serverHealthIndicatorServices = new ArrayList<>(List.of(
-            new RepositoryIntegrityHealthIndicatorService(clusterService),
-            new ShardsAvailabilityHealthIndicatorService(clusterService, clusterModule.getAllocationService())
-        ));
+        var serverHealthIndicatorServices = new ArrayList<>(
+            List.of(
+                new RepositoryIntegrityHealthIndicatorService(clusterService),
+                new ShardsAvailabilityHealthIndicatorService(clusterService, clusterModule.getAllocationService())
+            )
+        );
         if (HealthNode.isEnabled()) {
             serverHealthIndicatorServices.add(new DiskHealthIndicatorService(clusterService));
         }

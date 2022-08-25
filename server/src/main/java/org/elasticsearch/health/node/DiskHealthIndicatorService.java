@@ -9,7 +9,6 @@
 package org.elasticsearch.health.node;
 
 import org.elasticsearch.cluster.metadata.IndexMetadata;
-import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.health.Diagnosis;
 import org.elasticsearch.health.HealthIndicatorDetails;
@@ -52,10 +51,6 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
         return NAME;
     }
 
-    public Class<DiskHealthInfo> getHealthNodeDataTypeRequired() {
-        return DiskHealthInfo.class;
-    }
-
     @SuppressWarnings({ "unchecked" })
     @Override
     public HealthIndicatorResult calculate(boolean explain, HealthInfo healthInfo) {
@@ -70,12 +65,6 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
             );
         }
         // TODO: Do we need to make sure that we have a value for each node that's in the cluster state?
-        // TODO: Do we actually care about the cluster-level block (since it was probably intentionally done by the user)?
-        boolean hasGlobalReadOnlyAllowDeleteBlock = clusterService.state()
-            .blocks()
-            .global()
-            .stream()
-            .anyMatch(block -> block.equals(Metadata.CLUSTER_READ_ONLY_ALLOW_DELETE_BLOCK));
         Set<String> indicesWithBlock = clusterService.state()
             .blocks()
             .indices()
@@ -90,12 +79,7 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
         HealthIndicatorDetails details = getDetails(explain, diskHealthInfoMap);
         final List<HealthIndicatorImpact> impacts;
         final List<Diagnosis> diagnosisList;
-        if (hasGlobalReadOnlyAllowDeleteBlock) {
-            healthStatus = HealthStatus.RED;
-            symptom = "Cluster has a read only / allow deletes block";
-            impacts = DISK_PROBLEMS_IMPACTS;
-            diagnosisList = getClusterReadOnlyBlockDiagnosis(explain);
-        } else if (hasIndexReadOnlyAllowDeleteBlock) {
+        if (hasIndexReadOnlyAllowDeleteBlock) {
             healthStatus = HealthStatus.RED;
             symptom = String.format(
                 Locale.ROOT,
@@ -179,32 +163,6 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
     }
 
     private List<Diagnosis> getDiskProblemsDiagnosis(boolean explain) {
-        if (explain == false) {
-            return List.of();
-        }
-        return List.of(
-            new Diagnosis(
-                new Diagnosis.Definition(
-                    "free-disk-space",
-                    "Disk thresholds have been exceeded",
-                    "Free up disk space",
-                    "https://ela.st/free-disk-space"
-                ),
-                null
-            ),
-            new Diagnosis(
-                new Diagnosis.Definition(
-                    "add-disk-capacity",
-                    "Disk thresholds have been exceeded",
-                    "Add disk capacity",
-                    "https://ela.st/increase-disk-capacity"
-                ),
-                null
-            )
-        );
-    }
-
-    private List<Diagnosis> getClusterReadOnlyBlockDiagnosis(boolean explain) {
         if (explain == false) {
             return List.of();
         }
