@@ -8,13 +8,17 @@
 
 package org.elasticsearch.health;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionFuture;
 import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.health.node.FetchHealthInfoCacheAction;
 import org.elasticsearch.health.node.HealthInfo;
+import org.elasticsearch.health.node.action.HealthNodeNotDiscoveredException;
 import org.elasticsearch.health.node.selection.HealthNode;
+import org.elasticsearch.transport.NodeNotConnectedException;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -41,6 +45,7 @@ public class HealthService {
      * Detail map key that contains the reasons a result was marked as UNKNOWN
      */
     private static final String REASON = "reasons";
+    private static final Logger logger = LogManager.getLogger(HealthService.class);
 
     private final List<HealthIndicatorService> preflightHealthIndicatorServices;
     private final List<HealthIndicatorService> healthIndicatorServices;
@@ -87,19 +92,25 @@ public class HealthService {
 
         Stream<HealthIndicatorResult> filteredIndicatorResults;
         if (clusterHealthIsObtainable) {
-            final HealthInfo healthInfo;
+            HealthInfo healthInfo;
             if (HealthNode.isEnabled()) {
-                ActionFuture<FetchHealthInfoCacheAction.Response> responseActionFuture = client.execute(
-                    FetchHealthInfoCacheAction.INSTANCE,
-                    new FetchHealthInfoCacheAction.Request()
-                );
-                FetchHealthInfoCacheAction.Response response = responseActionFuture.actionGet();
-                healthInfo = response.getHealthInfo();
+                try {
+                    ActionFuture<FetchHealthInfoCacheAction.Response> responseActionFuture = client.execute(
+                        FetchHealthInfoCacheAction.INSTANCE,
+                        new FetchHealthInfoCacheAction.Request()
+                    );
+                    FetchHealthInfoCacheAction.Response response = responseActionFuture.actionGet();
+                    healthInfo = response.getHealthInfo();
+                } catch (NodeNotConnectedException | HealthNodeNotDiscoveredException e) {
+                    logger.info("Could not fetch data from health node", e);
+                    healthInfo = HealthInfo.EMPTY_HEALTH_INFO;
+                }
             } else {
                 healthInfo = HealthInfo.EMPTY_HEALTH_INFO;
             }
+            final HealthInfo finalHealthInfo = healthInfo;
             // Calculate remaining indicators
-            filteredIndicatorResults = filteredIndicators.map(service -> service.calculate(explain, healthInfo));
+            filteredIndicatorResults = filteredIndicators.map(service -> service.calculate(explain, finalHealthInfo));
         } else {
             // Mark remaining indicators as UNKNOWN
             HealthIndicatorDetails unknownDetails = healthUnknownReason(preflightResults, explain);
