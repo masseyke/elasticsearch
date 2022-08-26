@@ -38,16 +38,21 @@ public class HealthInfoTests extends AbstractWireSerializingTestCase<HealthInfo>
     public HealthInfo mutateInstance(HealthInfo originalHealthInfo) {
         Map<String, DiskHealthInfo> diskHealthInfoMap = originalHealthInfo.diskInfoByNode();
         Map<String, DiskHealthInfo> diskHealthInfoMapCopy = new HashMap<>(diskHealthInfoMap);
-        switch (randomIntBetween(1, 3)) {
-            case 1 -> {
-                diskHealthInfoMapCopy.put(
-                    randomAlphaOfLength(10),
-                    new DiskHealthInfo(randomFrom(HealthStatus.values()), randomFrom(DiskHealthInfo.Cause.values()))
-                );
-            }
-            case 2 -> {
-                if (diskHealthInfoMap.size() > 0) {
-                    String someNode = diskHealthInfoMap.keySet().iterator().next();
+        if (diskHealthInfoMap.isEmpty()) {
+            diskHealthInfoMapCopy.put(
+                randomAlphaOfLength(10),
+                new DiskHealthInfo(randomFrom(HealthStatus.values()), randomFrom(DiskHealthInfo.Cause.values()))
+            );
+        } else {
+            switch (randomIntBetween(1, 3)) {
+                case 1 -> {
+                    diskHealthInfoMapCopy.put(
+                        randomAlphaOfLength(10),
+                        new DiskHealthInfo(randomFrom(HealthStatus.values()), randomFrom(DiskHealthInfo.Cause.values()))
+                    );
+                }
+                case 2 -> {
+                    String someNode = randomFrom(diskHealthInfoMap.keySet());
                     diskHealthInfoMapCopy.put(
                         someNode,
                         new DiskHealthInfo(
@@ -55,25 +60,12 @@ public class HealthInfoTests extends AbstractWireSerializingTestCase<HealthInfo>
                             randomFrom(DiskHealthInfo.Cause.values())
                         )
                     );
-                } else {
-                    diskHealthInfoMapCopy.put(
-                        randomAlphaOfLength(10),
-                        new DiskHealthInfo(randomFrom(HealthStatus.values()), randomFrom(DiskHealthInfo.Cause.values()))
-                    );
                 }
-            }
-            case 3 -> {
-                if (diskHealthInfoMap.size() > 0) {
+                case 3 -> {
                     diskHealthInfoMapCopy.remove(randomFrom(diskHealthInfoMapCopy.keySet()));
-                    return new HealthInfo(diskHealthInfoMapCopy);
-                } else {
-                    diskHealthInfoMapCopy.put(
-                        randomAlphaOfLength(10),
-                        new DiskHealthInfo(randomFrom(HealthStatus.values()), randomFrom(DiskHealthInfo.Cause.values()))
-                    );
                 }
+                default -> throw new IllegalStateException();
             }
-            default -> throw new IllegalStateException();
         }
         return new HealthInfo(diskHealthInfoMapCopy);
     }
