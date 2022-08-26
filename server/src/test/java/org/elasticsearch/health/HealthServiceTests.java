@@ -17,8 +17,6 @@ import org.elasticsearch.health.node.FetchHealthInfoCacheAction;
 import org.elasticsearch.health.node.HealthInfo;
 import org.elasticsearch.health.node.selection.HealthNode;
 import org.elasticsearch.test.ESTestCase;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 
 import java.util.Collections;
 import java.util.HashMap;
