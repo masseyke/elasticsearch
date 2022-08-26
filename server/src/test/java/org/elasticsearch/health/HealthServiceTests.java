@@ -17,6 +17,8 @@ import org.elasticsearch.health.node.FetchHealthInfoCacheAction;
 import org.elasticsearch.health.node.HealthInfo;
 import org.elasticsearch.health.node.selection.HealthNode;
 import org.elasticsearch.test.ESTestCase;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -229,6 +231,7 @@ public class HealthServiceTests extends ESTestCase {
      * @param healthInfo The HealthInfo that will be returned if this client calls the FetchHealthInfoCacheAction
      * @return A mocked NodeClient
      */
+    @SuppressWarnings("unchecked")
     private NodeClient getTestClient(HealthInfo healthInfo) {
         NodeClient client = mock(NodeClient.class);
         doAnswer(invocation -> {
