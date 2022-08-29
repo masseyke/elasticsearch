@@ -27,6 +27,8 @@ import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.util.concurrent.RunOnce;
+import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.health.HealthStatus;
 import org.elasticsearch.health.metadata.HealthMetadata;
@@ -38,6 +40,7 @@ import org.elasticsearch.threadpool.ThreadPool;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 import static org.elasticsearch.core.Strings.format;
 
@@ -116,92 +119,134 @@ public class LocalHealthMonitor implements ClusterStateListener {
 
     void setMonitorInterval(TimeValue monitorInterval) {
         this.monitorInterval = monitorInterval;
-        maybeScheduleNow();
+        maybeStartScheduleNow();
     }
 
     void setEnabled(boolean enabled) {
         this.enabled = enabled;
-        maybeScheduleNow();
+        maybeStartScheduleNow();
     }
 
     /**
-     * We always check if the prerequisites are fulfilled and if the health node
-     * is enabled and selected before we schedule a monitoring task.
+     * This method schedules a monitoring tasks to be executed after the given delay and ensures that there will
+     * be only a single motoring task in progress at any given time. We always check if the prerequisites are fulfilled
+     * and if the health node is enabled before we schedule a monitoring task.
      */
-    private void maybeScheduleNextRun(TimeValue time) {
+    private void maybeStartSchedule(TimeValue time) {
         if (prerequisitesFulfilled && enabled) {
-            threadPool.scheduleUnlessShuttingDown(time, ThreadPool.Names.MANAGEMENT, this::monitorHealth);
+            threadPool.scheduleUnlessShuttingDown(
+                time,
+                ThreadPool.Names.MANAGEMENT,
+                () -> ensureSingleRunAndReschedule(this::monitorHealth)
+            );
         }
     }
 
     // Helper method that starts the monitoring without a delay.
     // Visible for testing
-    void maybeScheduleNow() {
-        maybeScheduleNextRun(TimeValue.ZERO);
+    void maybeStartScheduleNow() {
+        maybeStartSchedule(TimeValue.ZERO);
     }
 
     @Override
     public void clusterChanged(ClusterChangedEvent event) {
-        DiscoveryNode current = HealthNode.findHealthNode(event.state());
+        DiscoveryNode currentHealthNode = HealthNode.findHealthNode(event.state());
+        resetOnHealthNodeChange(currentHealthNode, event);
         prerequisitesFulfilled = event.state().nodesIfRecovered().getMinNodeVersion().onOrAfter(Version.V_8_5_0)
             && HealthMetadata.getFromClusterState(event.state()) != null
-            && current != null;
-        if (prerequisitesFulfilled) {
-            DiscoveryNode previous = HealthNode.findHealthNode(event.previousState());
-            if (Objects.equals(previous, current) == false) {
-                // The new health node does not have any information yet, so the last
-                // reported health info gets reset to null.
-                lastSeenHealthNode.set(current.getId());
-                lastReportedDiskHealthInfo.set(null);
-            }
-        }
-        maybeScheduleNow();
+            && currentHealthNode != null;
+        maybeStartScheduleNow();
     }
 
-    private void monitorHealth() {
-        if (inProgress.compareAndSet(false, true) && prerequisitesFulfilled) {
-            ClusterState clusterState = clusterService.state();
-            HealthMetadata healthMetadata = HealthMetadata.getFromClusterState(clusterState);
-            if (healthMetadata == null) {
-                logger.debug("Couldn't retrieve health metadata.");
-                inProgress.set(false);
-                return;
-            }
-            DiskHealthInfo previousHealth = this.lastReportedDiskHealthInfo.get();
-            DiskHealthInfo currentHealth = diskCheck.getHealth(healthMetadata, clusterState);
-            if (currentHealth.equals(previousHealth) == false) {
-                String nodeId = clusterService.localNode().getId();
-                String healthNodeId = lastSeenHealthNode.get();
-                ActionListener<AcknowledgedResponse> listener = ActionListener.wrap(response -> {
-                    // Update the last reported value only if the health node hasn't changed.
-                    if (Objects.equals(healthNodeId, lastSeenHealthNode.get())
-                        && lastReportedDiskHealthInfo.compareAndSet(previousHealth, currentHealth)) {
-                        logger.debug(
-                            "Health info [{}] successfully send, last reported value: {}.",
-                            currentHealth,
-                            lastReportedDiskHealthInfo.get()
-                        );
-                    }
-                }, e -> logger.error(() -> format("Failed to send health info [%s] to health node, will try again.", currentHealth), e));
-                client.execute(
-                    UpdateHealthInfoCacheAction.INSTANCE,
-                    new UpdateHealthInfoCacheAction.Request(nodeId, currentHealth),
-                    ActionListener.runAfter(listener, () -> {
-                        inProgress.set(false);
-                        // Scheduling happens after the flag inProgress is false, this ensures that
-                        // if the feature is enabled after the following schedule statement, the setEnabled
-                        // method will be able to schedule the next run, and it will not be a no-op.
-                        // We prefer to err towards an extra scheduling than miss the enabling of this feature alltogether.
-                        maybeScheduleNextRun(monitorInterval);
-                    })
-                );
-            } else {
-                inProgress.set(false);
-                maybeScheduleNextRun(monitorInterval);
-            }
+    private void resetOnHealthNodeChange(DiscoveryNode currentHealthNode, ClusterChangedEvent event) {
+        if (isNewHealthNode(currentHealthNode, event)) {
+            // The new health node might not have any information yet, so the last
+            // reported health info gets reset to null.
+            lastSeenHealthNode.set(currentHealthNode.getId());
+            lastReportedDiskHealthInfo.set(null);
         }
     }
 
+    // We compare the current health node against both the last seen health node from this node and the
+    // health node reported in the previous cluster state to be safe that we do not miss any change due to
+    // a flaky state.
+    private boolean isNewHealthNode(DiscoveryNode currentHealthNode, ClusterChangedEvent event) {
+        DiscoveryNode previousHealthNode = HealthNode.findHealthNode(event.previousState());
+        if (currentHealthNode == null) {
+            return true;
+        }
+        return Objects.equals(lastSeenHealthNode.get(), currentHealthNode.getId()) == false
+            || Objects.equals(previousHealthNode, currentHealthNode) == false;
+    }
+
+    /**
+     * This method evaluates the health info of this node and if there is a change it updates the health node
+     * @param release, the runnable to always execute after the health node request was sent.
+     * @return true, if the release steps were scheduled, false otherwise.
+     */
+    private boolean monitorHealth(Runnable release) {
+        if (prerequisitesFulfilled == false) {
+            return false;
+        }
+        ClusterState clusterState = clusterService.state();
+        HealthMetadata healthMetadata = HealthMetadata.getFromClusterState(clusterState);
+        if (healthMetadata == null) {
+            logger.debug("Couldn't retrieve health metadata.");
+            return false;
+        }
+        DiskHealthInfo previousHealth = this.lastReportedDiskHealthInfo.get();
+        DiskHealthInfo currentHealth = diskCheck.getHealth(healthMetadata, clusterState);
+        if (currentHealth.equals(previousHealth) == false) {
+            String nodeId = clusterService.localNode().getId();
+            String healthNodeId = lastSeenHealthNode.get();
+            ActionListener<AcknowledgedResponse> listener = ActionListener.wrap(response -> {
+                // Update the last reported value only if the health node hasn't changed.
+                if (Objects.equals(healthNodeId, lastSeenHealthNode.get())
+                    && lastReportedDiskHealthInfo.compareAndSet(previousHealth, currentHealth)) {
+                    logger.debug(
+                        "Health info [{}] successfully sent, last reported value: {}.",
+                        currentHealth,
+                        lastReportedDiskHealthInfo.get()
+                    );
+                }
+            }, e -> logger.error(() -> format("Failed to send health info [%s] to health node, will try again.", currentHealth), e));
+            client.execute(
+                UpdateHealthInfoCacheAction.INSTANCE,
+                new UpdateHealthInfoCacheAction.Request(nodeId, currentHealth),
+                ActionListener.runAfter(listener, release)
+            );
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * This method ensures that the monitoring given will not be executed in parallel at any given point in time and that it will
+     * be rescheduled after it's finished. To enable an action to have async code, we provide the release steps as an argument.
+     * We require that the action returns if the release code has been scheduled or not.
+     */
+    private void ensureSingleRunAndReschedule(Function<Runnable, Boolean> monitoringAction) {
+        if (inProgress.compareAndSet(false, true)) {
+            final Runnable release = new RunOnce(() -> {
+                inProgress.set(false);
+                // Scheduling happens after the flag inProgress is false, this ensures that
+                // if the feature is enabled after the following schedule statement, the setEnabled
+                // method will be able to schedule the next run, and it will not be a no-op.
+                // We prefer to err towards an extra scheduling than miss the enabling of this feature alltogether.
+                maybeStartSchedule(monitorInterval);
+            });
+            boolean released = false;
+            try {
+                released = monitoringAction.apply(release);
+            } finally {
+                if (released == false) {
+                    release.run();
+                }
+            }
+        }
+    }
+
+    @Nullable
     DiskHealthInfo getLastReportedDiskHealthInfo() {
         return lastReportedDiskHealthInfo.get();
     }
