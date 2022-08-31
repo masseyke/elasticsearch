@@ -21,7 +21,6 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
-import org.elasticsearch.core.CheckedFunction;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -170,9 +169,9 @@ public class GetHealthAction extends ActionType<GetHealthAction.Response> {
             client.threadPool()
                 .executor(ThreadPool.Names.GENERIC)
                 .execute(
-                    new ActionRunnable<>(
+                    new ActionRunnable<List<HealthIndicatorResult>>(
                         responseListener.map(
-                            (CheckedFunction<List<HealthIndicatorResult>, Response, Exception>) healthIndicatorResults -> new Response(
+                            healthIndicatorResults -> new Response(
                                 clusterService.getClusterName(),
                                 healthIndicatorResults,
                                 request.indicatorName == null
