@@ -65,7 +65,6 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
                 Collections.emptyList()
             );
         }
-        // TODO: Do we need to make sure that we have a value for each node that's in the cluster state?
         Set<String> indicesWithBlock = clusterService.state()
             .blocks()
             .indices()
@@ -113,22 +112,32 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
                     diagnosisList = List.of();
                 } else {
                     if (HealthStatus.RED.equals(healthStatus)) {
-                        final int nodesLimit = 5;
+                        final int itemsInStringLimit = 5;
                         Set<String> redNodes = diskHealthInfoMap.entrySet()
                             .stream()
                             .filter(entry -> HealthStatus.RED.equals(entry.getValue().healthStatus()))
                             .map(Map.Entry::getKey)
                             .collect(Collectors.toSet());
-                        String redNodesString = redNodes.stream().limit(nodesLimit).collect(Collectors.joining(", "));
-                        boolean hadToTruncate = redNodes.size() > nodesLimit;
-                        int numberTruncated = hadToTruncate ? redNodes.size() - nodesLimit : 0;
+                        String redNodesString = redNodes.stream().limit(itemsInStringLimit).collect(Collectors.joining(", "));
+                        boolean hadToTruncateNodes = redNodes.size() > itemsInStringLimit;
+                        int numberOfNodesTruncated = hadToTruncateNodes ? redNodes.size() - itemsInStringLimit : 0;
+                        Set<String> redIndices =
+                            clusterService.state().routingTable().allShards()
+                                .stream().filter(routing -> redNodes.contains(routing.currentNodeId()))
+                                .map(routing -> routing.index().getName()).collect(Collectors.toSet());
+                        String redIndicesString = redIndices.stream().limit(itemsInStringLimit).collect(Collectors.joining(", "));
+                        boolean hadToTruncateIndices = redIndices.size() > itemsInStringLimit;
+                        int numberOfIndicesTruncated = hadToTruncateIndices ? redIndices.size() - itemsInStringLimit : 0;
                         symptom = String.format(
                             Locale.ROOT,
-                            "Node%s %s%s %s out of disk space",
+                            "Node%s %s%s %s out of disk space. Ind%s %s%s cannot process any more updates",
                             redNodes.size() > 1 ? "s" : "",
                             redNodesString,
-                            hadToTruncate ? String.format(Locale.ROOT, ", and %d more", numberTruncated) : "",
-                            redNodes.size() > 1 ? "are" : "is"
+                            hadToTruncateNodes ? String.format(Locale.ROOT, ", and %d more", numberOfNodesTruncated) : "",
+                            redNodes.size() > 1 ? "are" : "is",
+                            redIndices.size() > 0 ? "ices" : "ex",
+                            redIndicesString,
+                            hadToTruncateIndices ? String.format(Locale.ROOT, ", and %d more", numberOfIndicesTruncated) : ""
                         );
                     } else {
                         final int nodesLimit = 5;
