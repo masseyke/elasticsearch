@@ -299,11 +299,11 @@ public class LocalHealthMonitor implements ClusterStateListener {
                                 );
                             }
                         });
-                        String uuid = UUID.randomUUID().toString();
-                        logger.info("Cluster state before sending req {}: {}", uuid, clusterState.metadata().customs());
+//                        String uuid = UUID.randomUUID().toString();
+//                        logger.info("Cluster state before sending req {}: {}", uuid, clusterState.metadata().customs());
                         client.execute(
                             UpdateHealthInfoCacheAction.INSTANCE,
-                            new UpdateHealthInfoCacheAction.Request(nodeId, currentHealth, uuid),
+                            new UpdateHealthInfoCacheAction.Request(nodeId, currentHealth),
                             ActionListener.runAfter(listener, runOnceScheduleNextRunIfNecessary)
                         );
                         nextRunScheduled = true;
