@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class DiskHealthIndicatorService implements HealthIndicatorService {
     public static final String NAME = "disk_health";
@@ -33,14 +34,9 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
 
     private static final String DISK_PROBLEMS_INGEST_IMPACT = "The cluster cannot create, delete, or rebalance indices, and cannot "
         + "insert or update documents.";
-    private static final String DISK_PROBLEMS_DEPLOYMENT_MANAGEMENT_IMPACT = "Scheduled tasks such as Watcher, ILM, and SLM might not "
-        + "work.";
-    private static final String DISK_PROBLEMS_BACKUP_IMPACT = "Snapshot and restore might not work.";
 
     private static final List<HealthIndicatorImpact> DISK_PROBLEMS_IMPACTS = List.of(
-        new HealthIndicatorImpact(1, DISK_PROBLEMS_INGEST_IMPACT, List.of(ImpactArea.INGEST)),
-        new HealthIndicatorImpact(1, DISK_PROBLEMS_DEPLOYMENT_MANAGEMENT_IMPACT, List.of(ImpactArea.DEPLOYMENT_MANAGEMENT)),
-        new HealthIndicatorImpact(3, DISK_PROBLEMS_BACKUP_IMPACT, List.of(ImpactArea.BACKUP))
+        new HealthIndicatorImpact(1, DISK_PROBLEMS_INGEST_IMPACT, List.of(ImpactArea.INGEST))
     );
 
     public DiskHealthIndicatorService(ClusterService clusterService) {
@@ -88,7 +84,7 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
                 indicesWithBlock.size() > 1 ? "indices have" : "index has"
             );
             impacts = DISK_PROBLEMS_IMPACTS;
-            diagnosisList = getIndexReadOnlyBlockDiagnosis(explain);
+            diagnosisList = getDiskProblemsDiagnosis(explain, Set.of(), indicesWithBlock);
         } else {
             Set<String> nodeIdsInClusterState = clusterService.state()
                 .nodes()
@@ -102,8 +98,11 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
                  */
                 healthStatus = HealthStatus.UNKNOWN;
                 impacts = DISK_PROBLEMS_IMPACTS;
-                symptom = "Some nodes are not reporting disk usage";
-                diagnosisList = getDiskProblemsDiagnosis(explain);
+                symptom = "Some nodes are not reporting disk usage data";
+                Set<String> problemNodes = nodeIdsInClusterState.stream()
+                    .filter(node -> nodeIdsInHealthInfo.contains(node) == false)
+                    .collect(Collectors.toSet());
+                diagnosisList = getDiskProblemsDiagnosis(explain, problemNodes, getIndicesForNodes(problemNodes));
             } else {
                 healthStatus = HealthStatus.merge(diskHealthInfoMap.values().stream().map(DiskHealthInfo::healthStatus));
                 if (HealthStatus.GREEN.equals(healthStatus)) {
@@ -111,59 +110,55 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
                     impacts = List.of();
                     diagnosisList = List.of();
                 } else {
+                    Set<String> problemNodes;
+                    Set<String> problemIndices;
                     if (HealthStatus.RED.equals(healthStatus)) {
-                        final int itemsInStringLimit = 5;
-                        Set<String> redNodes = diskHealthInfoMap.entrySet()
+                        problemNodes = diskHealthInfoMap.entrySet()
                             .stream()
                             .filter(entry -> HealthStatus.RED.equals(entry.getValue().healthStatus()))
                             .map(Map.Entry::getKey)
                             .collect(Collectors.toSet());
-                        String redNodesString = redNodes.stream().limit(itemsInStringLimit).collect(Collectors.joining(", "));
-                        boolean hadToTruncateNodes = redNodes.size() > itemsInStringLimit;
-                        int numberOfNodesTruncated = hadToTruncateNodes ? redNodes.size() - itemsInStringLimit : 0;
-                        Set<String> redIndices =
-                            clusterService.state().routingTable().allShards()
-                                .stream().filter(routing -> redNodes.contains(routing.currentNodeId()))
-                                .map(routing -> routing.index().getName()).collect(Collectors.toSet());
-                        String redIndicesString = redIndices.stream().limit(itemsInStringLimit).collect(Collectors.joining(", "));
-                        boolean hadToTruncateIndices = redIndices.size() > itemsInStringLimit;
-                        int numberOfIndicesTruncated = hadToTruncateIndices ? redIndices.size() - itemsInStringLimit : 0;
+                        problemIndices = getIndicesForNodes(problemNodes);
                         symptom = String.format(
                             Locale.ROOT,
-                            "Node%s %s%s %s out of disk space. Ind%s %s%s cannot process any more updates",
-                            redNodes.size() > 1 ? "s" : "",
-                            redNodesString,
-                            hadToTruncateNodes ? String.format(Locale.ROOT, ", and %d more", numberOfNodesTruncated) : "",
-                            redNodes.size() > 1 ? "are" : "is",
-                            redIndices.size() > 0 ? "ices" : "ex",
-                            redIndicesString,
-                            hadToTruncateIndices ? String.format(Locale.ROOT, ", and %d more", numberOfIndicesTruncated) : ""
+                            "%d node%s out of disk space. As a result %d ind%s cannot process any more updates.",
+                            problemNodes.size(),
+                            problemNodes.size() > 1 ? "s are" : " is",
+                            problemIndices.size(),
+                            problemIndices.size() > 1 ? "ices" : "ex"
                         );
                     } else {
-                        final int nodesLimit = 5;
-                        Set<String> yellowNodes = diskHealthInfoMap.entrySet()
+                        problemNodes = diskHealthInfoMap.entrySet()
                             .stream()
                             .filter(entry -> HealthStatus.YELLOW.equals(entry.getValue().healthStatus()))
                             .map(Map.Entry::getKey)
                             .collect(Collectors.toSet());
-                        String yellowNodesString = yellowNodes.stream().limit(nodesLimit).collect(Collectors.joining(", "));
-                        boolean hadToTruncate = yellowNodes.size() > nodesLimit;
-                        int numberTruncated = hadToTruncate ? yellowNodes.size() - nodesLimit : 0;
+                        problemIndices = getIndicesForNodes(problemNodes);
                         symptom = String.format(
                             Locale.ROOT,
-                            "Node%s %s%s ha%s increased disk usage",
-                            yellowNodes.size() > 1 ? "s" : "",
-                            yellowNodesString,
-                            hadToTruncate ? String.format(Locale.ROOT, ", and %d more", numberTruncated) : "",
-                            yellowNodes.size() > 1 ? "ve" : "s"
+                            "%d node%s increased disk space. As a result %d ind%s at risk of not being able to process any more updates.",
+                            problemNodes.size(),
+                            problemNodes.size() > 1 ? "s have" : " has",
+                            problemIndices.size(),
+                            problemIndices.size() > 1 ? "ices are" : "ex is"
                         );
                     }
                     impacts = DISK_PROBLEMS_IMPACTS;
-                    diagnosisList = getDiskProblemsDiagnosis(explain);
+                    diagnosisList = getDiskProblemsDiagnosis(explain, problemNodes, problemIndices);
                 }
             }
         }
         return createIndicator(healthStatus, symptom, details, impacts, diagnosisList);
+    }
+
+    private Set<String> getIndicesForNodes(Set<String> nodes) {
+        return clusterService.state()
+            .routingTable()
+            .allShards()
+            .stream()
+            .filter(routing -> nodes.contains(routing.currentNodeId()))
+            .map(routing -> routing.index().getName())
+            .collect(Collectors.toSet());
     }
 
     private HealthIndicatorDetails getDetails(boolean explain, Map<String, DiskHealthInfo> diskHealthInfoMap) {
@@ -188,54 +183,19 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
         };
     }
 
-    private List<Diagnosis> getDiskProblemsDiagnosis(boolean explain) {
+    private List<Diagnosis> getDiskProblemsDiagnosis(boolean explain, Set<String> nodeIds, Set<String> indices) {
         if (explain == false) {
             return List.of();
         }
         return List.of(
             new Diagnosis(
                 new Diagnosis.Definition(
-                    "free-disk-space",
+                    "free-disk-space-or-add-capacity",
                     "Disk thresholds have been exceeded",
-                    "Free up disk space",
-                    "https://ela.st/free-disk-space"
+                    "Free up disk space or add disk capacity",
+                    "https://ela.st/free-disk-space-or-add-capacity"
                 ),
-                null
-            ),
-            new Diagnosis(
-                new Diagnosis.Definition(
-                    "add-disk-capacity",
-                    "Disk thresholds have been exceeded",
-                    "Add disk capacity",
-                    "https://ela.st/increase-disk-capacity"
-                ),
-                null
-            )
-        );
-    }
-
-    private List<Diagnosis> getIndexReadOnlyBlockDiagnosis(boolean explain) {
-        if (explain == false) {
-            return List.of();
-        }
-        return List.of(
-            new Diagnosis(
-                new Diagnosis.Definition(
-                    "free-disk-space",
-                    "Disk thresholds have been exceeded",
-                    "Free up disk space",
-                    "https://ela.st/free-disk-space"
-                ),
-                null
-            ),
-            new Diagnosis(
-                new Diagnosis.Definition(
-                    "add-disk-capacity",
-                    "Disk thresholds have been exceeded",
-                    "Add disk capacity",
-                    "https://ela.st/increase-disk-capacity"
-                ),
-                null
+                Stream.concat(nodeIds.stream(), indices.stream()).toList()
             )
         );
     }
