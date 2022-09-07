@@ -229,6 +229,7 @@ public class HealthServiceTests extends ESTestCase {
      * @param healthInfo The HealthInfo that will be returned if this client calls the FetchHealthInfoCacheAction
      * @return A mocked NodeClient
      */
+    @SuppressWarnings("unchecked")
     private NodeClient getTestClient(HealthInfo healthInfo) {
         NodeClient client = mock(NodeClient.class);
         doAnswer(invocation -> {

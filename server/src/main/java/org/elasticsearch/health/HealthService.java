@@ -12,7 +12,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionFuture;
-import org.elasticsearch.client.internal.node.NodeClient;
+import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.health.node.FetchHealthInfoCacheAction;
 import org.elasticsearch.health.node.HealthInfo;
@@ -71,12 +71,13 @@ public class HealthService {
 
     /**
      * Returns the list of HealthIndicatorResult for this cluster.
+     * @param client A client to be used to fetch the health data from the health node
      * @param indicatorName If not null, the returned results will only have this indicator
      * @param explain Whether to compute the details portion of the results
      * @return A list of all HealthIndicatorResult if indicatorName is null, or one HealthIndicatorResult if indicatorName is not null
      * @throws ResourceNotFoundException if an indicator name is given and the indicator is not found
      */
-    public List<HealthIndicatorResult> getHealth(NodeClient client, @Nullable String indicatorName, boolean explain) {
+    public List<HealthIndicatorResult> getHealth(Client client, @Nullable String indicatorName, boolean explain) {
         // Determine if cluster is stable enough to calculate health before running other indicators
         List<HealthIndicatorResult> preflightResults = preflightHealthIndicatorServices.stream()
             .map(service -> service.calculate(explain, HealthInfo.EMPTY_HEALTH_INFO))
