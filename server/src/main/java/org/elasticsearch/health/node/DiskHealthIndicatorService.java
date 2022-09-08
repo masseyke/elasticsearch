@@ -121,11 +121,17 @@ public class DiskHealthIndicatorService implements HealthIndicatorService {
                         problemIndices = getIndicesForNodes(problemNodes);
                         symptom = String.format(
                             Locale.ROOT,
-                            "%d node%s out of disk space. As a result %d ind%s cannot process any more updates.",
+                            "%d node%s out of disk space.%s",
                             problemNodes.size(),
                             problemNodes.size() > 1 ? "s are" : " is",
-                            problemIndices.size(),
-                            problemIndices.size() > 1 ? "ices" : "ex"
+                            problemIndices.size() > 0
+                                ? String.format(
+                                    Locale.ROOT,
+                                    " As a result %d ind%s cannot process any more updates.",
+                                    problemIndices.size(),
+                                    problemIndices.size() > 1 ? "ices" : "ex"
+                                )
+                                : ""
                         );
                     } else {
                         problemNodes = diskHealthInfoMap.entrySet()

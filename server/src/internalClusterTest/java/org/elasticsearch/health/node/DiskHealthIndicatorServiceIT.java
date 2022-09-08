@@ -10,6 +10,8 @@ package org.elasticsearch.health.node;
 
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.node.DiscoveryNode;
+import org.elasticsearch.cluster.routing.allocation.DiskThresholdSettings;
+import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.health.HealthIndicatorResult;
 import org.elasticsearch.health.HealthService;
 import org.elasticsearch.health.HealthStatus;
@@ -22,11 +24,13 @@ import java.util.Map;
 
 import static org.hamcrest.Matchers.equalTo;
 
-@ESIntegTestCase.ClusterScope(scope = ESIntegTestCase.Scope.TEST)
+@ESIntegTestCase.ClusterScope(scope = ESIntegTestCase.Scope.TEST, numDataNodes = 0)
 public class DiskHealthIndicatorServiceIT extends ESIntegTestCase {
 
-    public void testThatHealthNodeDataIsFetchedAndPassedToIndicators() throws Exception {
+    public void testGreen() throws Exception {
         try (InternalTestCluster internalCluster = internalCluster()) {
+            internalCluster.startMasterOnlyNode();
+            internalCluster.startDataOnlyNode();
             ensureStableCluster(internalCluster.getNodeNames().length);
             waitForAllNodesToReportHealth();
             for (String node : internalCluster.getNodeNames()) {
@@ -43,6 +47,37 @@ public class DiskHealthIndicatorServiceIT extends ESIntegTestCase {
                 assertThat(testIndicatorResult.symptom(), equalTo("Disk usage is within configured thresholds"));
             }
         }
+    }
+
+    public void testRed() throws Exception {
+        try (InternalTestCluster internalCluster = internalCluster()) {
+            internalCluster.startMasterOnlyNode(getVeryLowWatermarksSettings());
+            internalCluster.startDataOnlyNode(getVeryLowWatermarksSettings());
+            ensureStableCluster(internalCluster.getNodeNames().length);
+            waitForAllNodesToReportHealth();
+            for (String node : internalCluster.getNodeNames()) {
+                HealthService healthService = internalCluster.getInstance(HealthService.class, node);
+                List<HealthIndicatorResult> resultList = healthService.getHealth(
+                    internalCluster.client(node),
+                    DiskHealthIndicatorService.NAME,
+                    true
+                );
+                assertNotNull(resultList);
+                assertThat(resultList.size(), equalTo(1));
+                HealthIndicatorResult testIndicatorResult = resultList.get(0);
+                assertThat(testIndicatorResult.status(), equalTo(HealthStatus.RED));
+                assertThat(testIndicatorResult.symptom(), equalTo("2 nodes are out of disk space."));
+            }
+        }
+    }
+
+    private Settings getVeryLowWatermarksSettings() {
+        return Settings.builder()
+            .put(DiskThresholdSettings.CLUSTER_ROUTING_ALLOCATION_LOW_DISK_WATERMARK_SETTING.getKey(), "0.5%")
+            .put(DiskThresholdSettings.CLUSTER_ROUTING_ALLOCATION_HIGH_DISK_WATERMARK_SETTING.getKey(), "0.5%")
+            .put(DiskThresholdSettings.CLUSTER_ROUTING_ALLOCATION_DISK_FLOOD_STAGE_WATERMARK_SETTING.getKey(), "0.5%")
+            .put(DiskThresholdSettings.CLUSTER_ROUTING_ALLOCATION_REROUTE_INTERVAL_SETTING.getKey(), "0ms")
+            .build();
     }
 
     private void waitForAllNodesToReportHealth() throws Exception {
