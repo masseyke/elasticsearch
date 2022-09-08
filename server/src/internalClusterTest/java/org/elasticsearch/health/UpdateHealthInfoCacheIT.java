@@ -44,7 +44,8 @@ public class UpdateHealthInfoCacheIT extends ESIntegTestCase {
             assertThat(healthNode, notNullValue());
             assertBusy(() -> {
                 Map<String, DiskHealthInfo> healthInfoCache = internalCluster.getInstance(HealthInfoCache.class, healthNode.getName())
-                    .getHealthInfo().diskInfoByNode();
+                    .getHealthInfo()
+                    .diskInfoByNode();
                 assertThat(healthInfoCache.size(), equalTo(nodeIds.length));
                 for (String nodeId : nodeIds) {
                     assertThat(healthInfoCache.get(nodeId), equalTo(GREEN));
@@ -71,7 +72,8 @@ public class UpdateHealthInfoCacheIT extends ESIntegTestCase {
             internalCluster.stopNode(nodeToLeave.getName());
             assertBusy(() -> {
                 Map<String, DiskHealthInfo> healthInfoCache = internalCluster.getInstance(HealthInfoCache.class, healthNode.getName())
-                    .getHealthInfo().diskInfoByNode();
+                    .getHealthInfo()
+                    .diskInfoByNode();
                 assertThat(healthInfoCache.size(), equalTo(nodes.size() - 1));
                 for (DiscoveryNode node : nodes) {
                     if (node.getId().equals(nodeToLeave.getId())) {
@@ -100,7 +102,8 @@ public class UpdateHealthInfoCacheIT extends ESIntegTestCase {
             logger.info("Previous health node {}, new health node {}.", healthNodeToBeShutDown, newHealthNode);
             assertBusy(() -> {
                 Map<String, DiskHealthInfo> healthInfoCache = internalCluster.getInstance(HealthInfoCache.class, newHealthNode.getName())
-                    .getHealthInfo().diskInfoByNode();
+                    .getHealthInfo()
+                    .diskInfoByNode();
                 assertThat(healthInfoCache.size(), equalTo(nodeIds.length));
                 for (String nodeId : nodeIds) {
                     assertThat(healthInfoCache.get(nodeId), equalTo(GREEN));
@@ -126,7 +129,8 @@ public class UpdateHealthInfoCacheIT extends ESIntegTestCase {
             assertThat(newHealthNode, notNullValue());
             assertBusy(() -> {
                 Map<String, DiskHealthInfo> healthInfoCache = internalCluster.getInstance(HealthInfoCache.class, newHealthNode.getName())
-                    .getHealthInfo().diskInfoByNode();
+                    .getHealthInfo()
+                    .diskInfoByNode();
                 assertThat(healthInfoCache.size(), equalTo(nodeIds.length));
                 for (String nodeId : nodeIds) {
                     assertThat(healthInfoCache.get(nodeId), equalTo(GREEN));
