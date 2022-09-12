@@ -106,7 +106,7 @@ public class HealthServiceIT extends ESIntegTestCase {
 
     public static final class TestHealthPlugin extends Plugin implements HealthPlugin {
 
-        private final List<HealthIndicatorService> healthIndicatorServices = new ArrayList<>();
+        private final List<NonPreflightHealthIndicatorService> healthIndicatorServices = new ArrayList<>();
 
         @Override
         public Collection<Object> createComponents(
@@ -129,12 +129,12 @@ public class HealthServiceIT extends ESIntegTestCase {
         }
 
         @Override
-        public Collection<HealthIndicatorService> getHealthIndicatorServices() {
+        public Collection<NonPreflightHealthIndicatorService> getHealthIndicatorServices() {
             return healthIndicatorServices;
         }
     }
 
-    public static final class TestHealthIndicatorService implements HealthIndicatorService {
+    public static final class TestHealthIndicatorService implements NonPreflightHealthIndicatorService {
         public static final String NAME = "test_indicator";
         public static final String SYMPTOM = "Symptom";
 

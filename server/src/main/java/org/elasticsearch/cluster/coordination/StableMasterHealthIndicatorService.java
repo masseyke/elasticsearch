@@ -13,10 +13,9 @@ import org.elasticsearch.health.Diagnosis;
 import org.elasticsearch.health.HealthIndicatorDetails;
 import org.elasticsearch.health.HealthIndicatorImpact;
 import org.elasticsearch.health.HealthIndicatorResult;
-import org.elasticsearch.health.HealthIndicatorService;
 import org.elasticsearch.health.HealthStatus;
 import org.elasticsearch.health.ImpactArea;
-import org.elasticsearch.health.node.HealthInfo;
+import org.elasticsearch.health.PreflightHealthIndicatorService;
 
 import java.util.Collection;
 import java.util.List;
@@ -34,7 +33,7 @@ import java.util.Map;
  * Since this indicator needs to be able to run when there is no master at all, it does not depend on the dedicated health node (which
  * requires the existence of a master).
  */
-public class StableMasterHealthIndicatorService implements HealthIndicatorService {
+public class StableMasterHealthIndicatorService implements PreflightHealthIndicatorService {
 
     public static final String NAME = "master_is_stable";
     public static final String GET_HELP_GUIDE = "https://ela.st/getting-help";
@@ -84,7 +83,7 @@ public class StableMasterHealthIndicatorService implements HealthIndicatorServic
     }
 
     @Override
-    public HealthIndicatorResult calculate(boolean explain, HealthInfo healthInfo) {
+    public HealthIndicatorResult calculate(boolean explain) {
         CoordinationDiagnosticsService.CoordinationDiagnosticsResult coordinationDiagnosticsResult = coordinationDiagnosticsService
             .diagnoseMasterStability(explain);
         return getHealthIndicatorResult(coordinationDiagnosticsResult, explain);

@@ -12,8 +12,8 @@ import org.elasticsearch.health.Diagnosis;
 import org.elasticsearch.health.HealthIndicatorDetails;
 import org.elasticsearch.health.HealthIndicatorImpact;
 import org.elasticsearch.health.HealthIndicatorResult;
-import org.elasticsearch.health.HealthIndicatorService;
 import org.elasticsearch.health.ImpactArea;
+import org.elasticsearch.health.NonPreflightHealthIndicatorService;
 import org.elasticsearch.health.SimpleHealthIndicatorDetails;
 import org.elasticsearch.health.node.HealthInfo;
 import org.elasticsearch.xpack.core.ilm.IndexLifecycleMetadata;
@@ -34,7 +34,7 @@ import static org.elasticsearch.health.HealthStatus.YELLOW;
  *
  * ILM must be running to fix warning reported by this indicator.
  */
-public class IlmHealthIndicatorService implements HealthIndicatorService {
+public class IlmHealthIndicatorService implements NonPreflightHealthIndicatorService {
 
     public static final String NAME = "ilm";
 

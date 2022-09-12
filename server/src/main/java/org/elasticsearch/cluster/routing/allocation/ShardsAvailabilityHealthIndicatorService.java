@@ -38,9 +38,9 @@ import org.elasticsearch.health.Diagnosis;
 import org.elasticsearch.health.HealthIndicatorDetails;
 import org.elasticsearch.health.HealthIndicatorImpact;
 import org.elasticsearch.health.HealthIndicatorResult;
-import org.elasticsearch.health.HealthIndicatorService;
 import org.elasticsearch.health.HealthStatus;
 import org.elasticsearch.health.ImpactArea;
+import org.elasticsearch.health.NonPreflightHealthIndicatorService;
 import org.elasticsearch.health.SimpleHealthIndicatorDetails;
 import org.elasticsearch.health.node.HealthInfo;
 import org.elasticsearch.snapshots.SnapshotShardSizeInfo;
@@ -84,7 +84,7 @@ import static org.elasticsearch.health.HealthStatus.YELLOW;
  * Each shard needs to be available and replicated in order to guarantee high availability and prevent data loses.
  * Shards allocated on nodes scheduled for restart (using nodes shutdown API) will not degrade this indicator health.
  */
-public class ShardsAvailabilityHealthIndicatorService implements HealthIndicatorService {
+public class ShardsAvailabilityHealthIndicatorService implements NonPreflightHealthIndicatorService {
 
     private static final Logger LOGGER = LogManager.getLogger(ShardsAvailabilityHealthIndicatorService.class);
 

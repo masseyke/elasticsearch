@@ -8,7 +8,7 @@
 
 package org.elasticsearch.plugins;
 
-import org.elasticsearch.health.HealthIndicatorService;
+import org.elasticsearch.health.NonPreflightHealthIndicatorService;
 
 import java.util.Collection;
 
@@ -17,5 +17,5 @@ import java.util.Collection;
  */
 public interface HealthPlugin {
 
-    Collection<HealthIndicatorService> getHealthIndicatorServices();
+    Collection<NonPreflightHealthIndicatorService> getHealthIndicatorServices();
 }

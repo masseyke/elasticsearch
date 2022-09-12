@@ -27,7 +27,7 @@ import org.elasticsearch.common.settings.SettingsFilter;
 import org.elasticsearch.core.IOUtils;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.env.NodeEnvironment;
-import org.elasticsearch.health.HealthIndicatorService;
+import org.elasticsearch.health.NonPreflightHealthIndicatorService;
 import org.elasticsearch.index.IndexModule;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.license.XPackLicenseState;
@@ -432,7 +432,7 @@ public class IndexLifecycle extends Plugin implements ActionPlugin, HealthPlugin
     }
 
     @Override
-    public Collection<HealthIndicatorService> getHealthIndicatorServices() {
+    public Collection<NonPreflightHealthIndicatorService> getHealthIndicatorServices() {
         return List.of(ilmHealthIndicatorService.get(), slmHealthIndicatorService.get());
     }
 

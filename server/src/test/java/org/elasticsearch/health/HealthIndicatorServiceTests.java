@@ -52,8 +52,8 @@ public class HealthIndicatorServiceTests extends ESTestCase {
         assertEquals(expectedImpacts, outputImpacts);
     }
 
-    private HealthIndicatorService getTestHealthIndicatorService() {
-        return new HealthIndicatorService() {
+    private NonPreflightHealthIndicatorService getTestHealthIndicatorService() {
+        return new NonPreflightHealthIndicatorService() {
             @Override
             public String name() {
                 return null;

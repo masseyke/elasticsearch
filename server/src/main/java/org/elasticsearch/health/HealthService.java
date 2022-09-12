@@ -47,8 +47,8 @@ public class HealthService {
     private static final String REASON = "reasons";
     private static final Logger logger = LogManager.getLogger(HealthService.class);
 
-    private final List<HealthIndicatorService> preflightHealthIndicatorServices;
-    private final List<HealthIndicatorService> healthIndicatorServices;
+    private final List<PreflightHealthIndicatorService> preflightHealthIndicatorServices;
+    private final List<NonPreflightHealthIndicatorService> healthIndicatorServices;
 
     /**
      * Creates a new HealthService.
@@ -62,8 +62,8 @@ public class HealthService {
      * @param healthIndicatorServices indicators that are run if the preflight indicators return GREEN results.
      */
     public HealthService(
-        List<HealthIndicatorService> preflightHealthIndicatorServices,
-        List<HealthIndicatorService> healthIndicatorServices
+        List<PreflightHealthIndicatorService> preflightHealthIndicatorServices,
+        List<NonPreflightHealthIndicatorService> healthIndicatorServices
     ) {
         this.preflightHealthIndicatorServices = preflightHealthIndicatorServices;
         this.healthIndicatorServices = healthIndicatorServices;
@@ -87,7 +87,7 @@ public class HealthService {
     ) {
         // Determine if cluster is stable enough to calculate health before running other indicators
         List<HealthIndicatorResult> preflightResults = preflightHealthIndicatorServices.stream()
-            .map(service -> service.calculate(explain, HealthInfo.EMPTY_HEALTH_INFO))
+            .map(service -> service.calculate(explain))
             .toList();
 
         // If any of these are not GREEN, then we cannot obtain health from other indicators
@@ -95,7 +95,7 @@ public class HealthService {
             || preflightResults.stream().map(HealthIndicatorResult::status).allMatch(isEqual(HealthStatus.GREEN));
 
         // Filter remaining indicators by indicator name if present before calculating their results
-        Stream<HealthIndicatorService> filteredIndicators = healthIndicatorServices.stream()
+        Stream<NonPreflightHealthIndicatorService> filteredIndicators = healthIndicatorServices.stream()
             .filter(service -> indicatorName == null || service.name().equals(indicatorName));
 
         if (clusterHealthIsObtainable) {
@@ -149,7 +149,7 @@ public class HealthService {
         ActionListener<List<HealthIndicatorResult>> listener,
         String indicatorName,
         List<HealthIndicatorResult> preflightResults,
-        List<HealthIndicatorService> filteredIndicators,
+        List<NonPreflightHealthIndicatorService> filteredIndicators,
         boolean explain
     ) {
         combineResultsAndNotifyListener(

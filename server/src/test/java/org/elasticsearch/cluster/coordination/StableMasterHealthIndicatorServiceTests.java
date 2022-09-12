@@ -25,7 +25,6 @@ import org.elasticsearch.health.Diagnosis;
 import org.elasticsearch.health.HealthIndicatorDetails;
 import org.elasticsearch.health.HealthIndicatorResult;
 import org.elasticsearch.health.HealthStatus;
-import org.elasticsearch.health.node.HealthInfo;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 import org.elasticsearch.xcontent.ToXContent;
@@ -242,7 +241,7 @@ public class StableMasterHealthIndicatorServiceTests extends AbstractCoordinator
 
         // Change 4:
         localMasterHistory.clusterChanged(new ClusterChangedEvent(TEST_SOURCE, node2MasterClusterState, node3MasterClusterState));
-        HealthIndicatorResult result = service.calculate(true, HealthInfo.EMPTY_HEALTH_INFO);
+        HealthIndicatorResult result = service.calculate(true);
         assertThat(result.status(), equalTo(HealthStatus.YELLOW));
         assertThat(result.symptom(), equalTo("The elected master node has changed 4 times in the last 30m"));
         assertThat(result.impacts().size(), equalTo(3));

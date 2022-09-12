@@ -15,8 +15,8 @@ import org.elasticsearch.health.Diagnosis;
 import org.elasticsearch.health.HealthIndicatorDetails;
 import org.elasticsearch.health.HealthIndicatorImpact;
 import org.elasticsearch.health.HealthIndicatorResult;
-import org.elasticsearch.health.HealthIndicatorService;
 import org.elasticsearch.health.ImpactArea;
+import org.elasticsearch.health.NonPreflightHealthIndicatorService;
 import org.elasticsearch.health.SimpleHealthIndicatorDetails;
 import org.elasticsearch.health.node.HealthInfo;
 import org.elasticsearch.repositories.RepositoryData;
@@ -39,7 +39,7 @@ import static org.elasticsearch.health.HealthStatus.RED;
  *
  * Corrupted repository most likely need to be manually cleaned and a new snapshot needs to be created from scratch.
  */
-public class RepositoryIntegrityHealthIndicatorService implements HealthIndicatorService {
+public class RepositoryIntegrityHealthIndicatorService implements NonPreflightHealthIndicatorService {
 
     public static final String NAME = "repository_integrity";
 

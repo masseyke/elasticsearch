@@ -102,8 +102,8 @@ import org.elasticsearch.gateway.GatewayModule;
 import org.elasticsearch.gateway.GatewayService;
 import org.elasticsearch.gateway.MetaStateService;
 import org.elasticsearch.gateway.PersistedClusterStateService;
-import org.elasticsearch.health.HealthIndicatorService;
 import org.elasticsearch.health.HealthService;
+import org.elasticsearch.health.PreflightHealthIndicatorService;
 import org.elasticsearch.health.metadata.HealthMetadataService;
 import org.elasticsearch.health.node.HealthInfoCache;
 import org.elasticsearch.health.node.LocalHealthMonitor;
@@ -1161,7 +1161,7 @@ public class Node implements Closeable {
         ClusterModule clusterModule,
         CoordinationDiagnosticsService coordinationDiagnosticsService
     ) {
-        List<HealthIndicatorService> preflightHealthIndicatorServices = Collections.singletonList(
+        List<PreflightHealthIndicatorService> preflightHealthIndicatorServices = Collections.singletonList(
             new StableMasterHealthIndicatorService(coordinationDiagnosticsService)
         );
         var serverHealthIndicatorServices = List.of(

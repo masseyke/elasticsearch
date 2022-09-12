@@ -83,7 +83,7 @@ public class GetHealthActionIT extends ESIntegTestCase {
 
     public static final class TestHealthPlugin extends Plugin implements HealthPlugin {
 
-        private final List<HealthIndicatorService> healthIndicatorServices = new ArrayList<>();
+        private final List<NonPreflightHealthIndicatorService> healthIndicatorServices = new ArrayList<>();
 
         @Override
         public List<Setting<?>> getSettings() {
@@ -113,7 +113,7 @@ public class GetHealthActionIT extends ESIntegTestCase {
         }
 
         @Override
-        public Collection<HealthIndicatorService> getHealthIndicatorServices() {
+        public Collection<NonPreflightHealthIndicatorService> getHealthIndicatorServices() {
             return healthIndicatorServices;
         }
     }
@@ -121,7 +121,7 @@ public class GetHealthActionIT extends ESIntegTestCase {
     /**
      * This indicator pulls its status from the statusSetting Setting.
      */
-    public static class TestHealthIndicatorService implements HealthIndicatorService {
+    public static class TestHealthIndicatorService implements NonPreflightHealthIndicatorService {
 
         private final ClusterService clusterService;
         private final String indicatorName;

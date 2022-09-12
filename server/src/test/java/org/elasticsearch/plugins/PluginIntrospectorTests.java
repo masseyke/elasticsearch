@@ -20,7 +20,7 @@ import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.env.NodeEnvironment;
-import org.elasticsearch.health.HealthIndicatorService;
+import org.elasticsearch.health.NonPreflightHealthIndicatorService;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.analysis.TokenFilterFactory;
 import org.elasticsearch.index.engine.EngineFactory;
@@ -141,7 +141,7 @@ public class PluginIntrospectorTests extends ESTestCase {
             }
 
             @Override
-            public Collection<HealthIndicatorService> getHealthIndicatorServices() {
+            public Collection<NonPreflightHealthIndicatorService> getHealthIndicatorServices() {
                 return null;
             }
 
@@ -295,7 +295,7 @@ public class PluginIntrospectorTests extends ESTestCase {
             }
 
             @Override
-            public Collection<HealthIndicatorService> getHealthIndicatorServices() { // from Health
+            public Collection<NonPreflightHealthIndicatorService> getHealthIndicatorServices() { // from Health
                 return null;
             }
         }
