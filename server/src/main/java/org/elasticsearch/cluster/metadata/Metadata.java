@@ -1993,7 +1993,7 @@ public class Metadata implements Iterable<IndexMetadata>, Diffable<Metadata>, To
             if (context == XContentContext.API) {
                 builder.startObject("metadata");
             } else {
-                builder.startObject("meta-data");
+                builder.startObject("metadata");
                 builder.field("version", metadata.version());
             }
 
@@ -2040,7 +2040,7 @@ public class Metadata implements Iterable<IndexMetadata>, Diffable<Metadata>, To
             // we might get here after the meta-data element, or on a fresh parser
             XContentParser.Token token = parser.currentToken();
             String currentFieldName = parser.currentName();
-            while ("meta-data".equals(currentFieldName) == false) {
+            while ("metadata".equals(currentFieldName) == false) {
                 token = parser.nextToken();
                 if (token == XContentParser.Token.START_OBJECT) {
                     // move to the field name (meta-data)
@@ -2051,8 +2051,11 @@ public class Metadata implements Iterable<IndexMetadata>, Diffable<Metadata>, To
                 currentFieldName = parser.currentName();
             }
 
-            if ("meta-data".equals(currentFieldName) == false) {
+            if ("metadata".equals(currentFieldName) == false) {
                 throw new IllegalArgumentException("Expected [meta-data] as a field name but got " + currentFieldName);
+            }
+            if (token != XContentParser.Token.START_OBJECT) {
+                token = parser.nextToken();
             }
             XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, token, parser);
 
@@ -2097,7 +2100,7 @@ public class Metadata implements Iterable<IndexMetadata>, Diffable<Metadata>, To
                     throw new IllegalArgumentException("Unexpected token " + token);
                 }
             }
-            XContentParserUtils.ensureExpectedToken(XContentParser.Token.END_OBJECT, parser.nextToken(), parser);
+//            XContentParserUtils.ensureExpectedToken(XContentParser.Token.END_OBJECT, parser.nextToken(), parser);
             return builder.build();
         }
     }
