@@ -154,9 +154,9 @@ class Retry2 {
             new RetryQueuePayload(bulkRequest, responsesAccumulator, consumer, listener, retriesRemaining)
         );
         if (accepted) {
-            logger.trace("Added to readyToLoadQueue. Current queue size is {} / {}", readyToLoadQueue.size(), queueCapacity);
+            logger.info("Added to readyToLoadQueue. Current queue size is {} / {}", readyToLoadQueue.size(), queueCapacity);
         } else {
-            logger.trace("Rejecting a bulk request because the queue is full. Queue size is {}", readyToLoadQueue.size());
+            logger.info("Rejecting a bulk request because the queue is full. Queue size is {}", readyToLoadQueue.size());
             listener.onFailure(
                 new EsRejectedExecutionException("Could not load bulk request, bulk request queue at capacity [" + queueCapacity + "]")
             );
@@ -229,7 +229,7 @@ class Retry2 {
                 break;
             }
             BulkRequest bulkRequest = queueItem.request;
-            logger.trace("Sending a bulk request with {} items", bulkRequest.requests.size());
+            logger.info("Sending a bulk request with {} items", bulkRequest.requests.size());
             List<BulkItemResponse> responsesAccumulator = queueItem.responsesAccumulator;
             BiConsumer<BulkRequest, ActionListener<BulkResponse>> consumer = queueItem.consumer;
             ActionListener<BulkResponse> listener = queueItem.listener;
