@@ -12,18 +12,23 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.common.util.Maps;
+import org.elasticsearch.core.RestApiVersion;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.xcontent.ToXContentFragment;
 import org.elasticsearch.xcontent.XContentBuilder;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class IngestStats implements Writeable, ToXContentFragment {
     private final Stats totalStats;
@@ -96,8 +101,7 @@ public class IngestStats implements Writeable, ToXContentFragment {
         }
     }
 
-    @Override
-    public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
+    public XContentBuilder toXContentUnnested(XContentBuilder builder, Params params) throws IOException {
         builder.startObject("ingest");
         builder.startObject("total");
         totalStats.toXContent(builder, params);
@@ -126,6 +130,84 @@ public class IngestStats implements Writeable, ToXContentFragment {
         builder.endObject();
         builder.endObject();
         return builder;
+    }
+
+    @Override
+    public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
+        if (builder.getRestApiVersion().matches(RestApiVersion.onOrAfter(RestApiVersion.V_8)) == false) {
+            builder.startObject("ingest");
+            builder.startObject("total");
+            totalStats.toXContent(builder, params);
+            builder.endObject();
+            builder.startObject("pipelines");
+            String pipelineProcessorPrefix = PipelineProcessor.TYPE + ":";
+            Set<String> topLevelPipelineNames = findTopLevelPipelineNames(processorStats, pipelineProcessorPrefix);
+            pipelineStats.stream()
+                .filter(pipelineStat -> topLevelPipelineNames.contains(pipelineStat.getPipelineId()))
+                .forEach(topLevelPipeline -> {
+                    Map<String, PipelineStat> pipelineStatMap = pipelineStats.stream()
+                        .collect(
+                            Collectors.toMap(
+                                pipelineStat -> pipelineProcessorPrefix + pipelineStat.getPipelineId(),
+                                pipelineStat -> pipelineStat
+                            )
+                        );
+                    try {
+                        builder.startObject(topLevelPipeline.getPipelineId());
+                        topLevelPipeline.getStats().toXContent(builder, params);
+                        processorsToXContent(topLevelPipeline, processorStats, pipelineStatMap, builder, params);
+                        builder.endObject();
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            builder.endObject();
+            builder.endObject();
+            return builder;
+        } else {
+            return toXContentUnnested(builder, params);
+        }
+    }
+
+    private Set<String> findTopLevelPipelineNames(Map<String, List<ProcessorStat>> processorStats, String pipelineProcessorPrefix) {
+        Set<String> allPipelines = processorStats.keySet();
+        Set<String> topLevelPipelineNames = new HashSet<>(allPipelines);
+        Set<String> nestedPipelines = processorStats.values()
+            .stream()
+            .flatMap(Collection::stream)
+            .filter(processorStat -> processorStat.name != null && processorStat.name.startsWith(pipelineProcessorPrefix))
+            .map(processorStat -> processorStat.name.substring(pipelineProcessorPrefix.length()))
+            .collect(Collectors.toSet());
+        topLevelPipelineNames.removeAll(nestedPipelines);
+        return topLevelPipelineNames;
+    }
+
+    private static void processorsToXContent(
+        PipelineStat pipelineStat,
+        Map<String, List<ProcessorStat>> processorStats,
+        Map<String, PipelineStat> pipelineStatMap,
+        XContentBuilder builder,
+        Params params
+    ) throws IOException {
+
+        List<ProcessorStat> processorStatsForPipeline = processorStats.get(pipelineStat.getPipelineId());
+        builder.startArray("processors");
+        if (processorStatsForPipeline != null) {
+            for (ProcessorStat processorStat : processorStatsForPipeline) {
+                builder.startObject();
+                builder.startObject(processorStat.getName());
+                builder.field("type", processorStat.getType());
+                builder.startObject("stats");
+                processorStat.getStats().toXContent(builder, params);
+                builder.endObject();
+                if (processorStat.getType().equals(PipelineProcessor.TYPE)) {
+                    processorsToXContent(pipelineStatMap.get(processorStat.getName()), processorStats, pipelineStatMap, builder, params);
+                }
+                builder.endObject();
+                builder.endObject();
+            }
+        }
+        builder.endArray();
     }
 
     public Stats getTotalStats() {
