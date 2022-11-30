@@ -21,7 +21,7 @@ public class PipelineProcessor extends AbstractProcessor {
     private final boolean ignoreMissingPipeline;
     private final IngestService ingestService;
 
-    PipelineProcessor(
+    public PipelineProcessor(
         String tag,
         String description,
         TemplateScript.Factory pipelineTemplate,

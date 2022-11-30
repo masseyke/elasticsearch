@@ -134,7 +134,7 @@ public class IngestStats implements Writeable, ToXContentFragment {
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        if (builder.getRestApiVersion().matches(RestApiVersion.onOrAfter(RestApiVersion.V_8)) == false) {
+        if (builder.getRestApiVersion().matches(RestApiVersion.onOrAfter(RestApiVersion.V_8))) {
             builder.startObject("ingest");
             builder.startObject("total");
             totalStats.toXContent(builder, params);
@@ -142,25 +142,29 @@ public class IngestStats implements Writeable, ToXContentFragment {
             builder.startObject("pipelines");
             String pipelineProcessorPrefix = PipelineProcessor.TYPE + ":";
             Set<String> topLevelPipelineNames = findTopLevelPipelineNames(processorStats, pipelineProcessorPrefix);
-            pipelineStats.stream()
-                .filter(pipelineStat -> topLevelPipelineNames.contains(pipelineStat.getPipelineId()))
-                .forEach(topLevelPipeline -> {
-                    Map<String, PipelineStat> pipelineStatMap = pipelineStats.stream()
-                        .collect(
-                            Collectors.toMap(
-                                pipelineStat -> pipelineProcessorPrefix + pipelineStat.getPipelineId(),
-                                pipelineStat -> pipelineStat
-                            )
+            Map<String, PipelineStat> pipelineStatMap = pipelineStats.stream()
+                .collect(
+                    Collectors.toMap(pipelineStat -> pipelineProcessorPrefix + pipelineStat.getPipelineId(), pipelineStat -> pipelineStat)
+                );
+            for (PipelineStat pipelineStat : pipelineStats) {
+                try {
+                    builder.startObject(pipelineStat.getPipelineId());
+                    pipelineStat.getStats().toXContent(builder, params);
+                    if (topLevelPipelineNames.contains(pipelineStat.getPipelineId())) {
+                        processorsToXContent(
+                            pipelineStat.getPipelineId(),
+                            pipelineStat,
+                            processorStats,
+                            pipelineStatMap,
+                            builder,
+                            params
                         );
-                    try {
-                        builder.startObject(topLevelPipeline.getPipelineId());
-                        topLevelPipeline.getStats().toXContent(builder, params);
-                        processorsToXContent(topLevelPipeline, processorStats, pipelineStatMap, builder, params);
-                        builder.endObject();
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
                     }
-                });
+                    builder.endObject();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
             builder.endObject();
             builder.endObject();
             return builder;
@@ -183,6 +187,7 @@ public class IngestStats implements Writeable, ToXContentFragment {
     }
 
     private static void processorsToXContent(
+        String context,
         PipelineStat pipelineStat,
         Map<String, List<ProcessorStat>> processorStats,
         Map<String, PipelineStat> pipelineStatMap,
@@ -190,7 +195,7 @@ public class IngestStats implements Writeable, ToXContentFragment {
         Params params
     ) throws IOException {
 
-        List<ProcessorStat> processorStatsForPipeline = processorStats.get(pipelineStat.getPipelineId());
+        List<ProcessorStat> processorStatsForPipeline = processorStats.get(context);
         builder.startArray("processors");
         if (processorStatsForPipeline != null) {
             for (ProcessorStat processorStat : processorStatsForPipeline) {
@@ -199,10 +204,17 @@ public class IngestStats implements Writeable, ToXContentFragment {
                 builder.field("type", processorStat.getType());
                 builder.startObject("stats");
                 processorStat.getStats().toXContent(builder, params);
-                builder.endObject();
                 if (processorStat.getType().equals(PipelineProcessor.TYPE)) {
-                    processorsToXContent(pipelineStatMap.get(processorStat.getName()), processorStats, pipelineStatMap, builder, params);
+                    processorsToXContent(
+                        context + ":" + processorStat.getName().substring(PipelineProcessor.TYPE.length() + 1),
+                        pipelineStatMap.get(processorStat.getName()),
+                        processorStats,
+                        pipelineStatMap,
+                        builder,
+                        params
+                    );
                 }
+                builder.endObject();
                 builder.endObject();
                 builder.endObject();
             }

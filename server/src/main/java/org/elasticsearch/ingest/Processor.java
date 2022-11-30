@@ -36,6 +36,10 @@ public interface Processor {
      * otherwise just overwrite {@link #execute(IngestDocument)}.
      */
     default void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+        execute(ingestDocument, "none", handler);
+    }
+
+    default void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
         if (isAsync() == false) {
             handler.accept(
                 null,
@@ -52,6 +56,10 @@ public interface Processor {
      *         otherwise this document will be kept and indexed
      */
     default IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+        return execute(ingestDocument, "none");
+    }
+
+    default IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         if (isAsync()) {
             throw new UnsupportedOperationException("synchronous execute method should not be executed for async processors");
         }

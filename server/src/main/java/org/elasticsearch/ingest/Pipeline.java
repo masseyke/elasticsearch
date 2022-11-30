@@ -111,7 +111,7 @@ public final class Pipeline {
      * If <code>null</code> is returned then this document will be dropped and not indexed, otherwise
      * this document will be kept and indexed.
      */
-    public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+    public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
         final long startTimeInNanos = relativeTimeProvider.getAsLong();
         /*
          * Our assumption is that the listener passed to the processor is only ever called once. However, there is no way to enforce
@@ -121,7 +121,7 @@ public final class Pipeline {
          */
         final AtomicBoolean listenerHasBeenCalled = new AtomicBoolean(false);
         metrics.preIngest();
-        compoundProcessor.execute(ingestDocument, (result, e) -> {
+        compoundProcessor.execute(ingestDocument, context, (result, e) -> {
             if (listenerHasBeenCalled.getAndSet(true)) {
                 logger.warn("A listener was unexpectedly called more than once", new RuntimeException(e));
                 assert false : "A listener was unexpectedly called more than once";
