@@ -365,7 +365,7 @@ public class FinalPipelineIT extends ESIntegTestCase {
                 "request",
                 (processorFactories, tag, description, config) -> new AbstractProcessor(tag, description) {
                     @Override
-                    public IngestDocument execute(final IngestDocument ingestDocument) throws Exception {
+                    public IngestDocument execute(final IngestDocument ingestDocument, String context) throws Exception {
                         ingestDocument.setFieldValue("request", true);
                         return ingestDocument;
                     }
@@ -378,7 +378,7 @@ public class FinalPipelineIT extends ESIntegTestCase {
                 "changing_dest",
                 (processorFactories, tag, description, config) -> new AbstractProcessor(tag, description) {
                     @Override
-                    public IngestDocument execute(final IngestDocument ingestDocument) throws Exception {
+                    public IngestDocument execute(final IngestDocument ingestDocument, String context) throws Exception {
                         ingestDocument.setFieldValue(IngestDocument.Metadata.INDEX.getFieldName(), "target");
                         return ingestDocument;
                     }
@@ -396,7 +396,7 @@ public class FinalPipelineIT extends ESIntegTestCase {
             return (factories, tag, description, config) -> new AbstractProcessor(tag, description) {
 
                 @Override
-                public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+                public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
                     if (async) {
                         // randomize over sync and async execution
                         randomFrom(parameters.genericExecutor, Runnable::run).accept(() -> {
@@ -409,7 +409,7 @@ public class FinalPipelineIT extends ESIntegTestCase {
                 }
 
                 @Override
-                public IngestDocument execute(IngestDocument ingestDocument) {
+                public IngestDocument execute(IngestDocument ingestDocument, String context) {
                     if (async) {
                         throw new AssertionError("should not be called");
                     } else {
@@ -436,7 +436,7 @@ public class FinalPipelineIT extends ESIntegTestCase {
                 return new AbstractProcessor(tag, description) {
 
                     @Override
-                    public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+                    public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
                         if (async) {
                             // randomize over sync and async execution
                             randomFrom(parameters.genericExecutor, Runnable::run).accept(() -> {
@@ -462,7 +462,7 @@ public class FinalPipelineIT extends ESIntegTestCase {
                     }
 
                     @Override
-                    public IngestDocument execute(final IngestDocument ingestDocument) throws Exception {
+                    public IngestDocument execute(final IngestDocument ingestDocument, String context) throws Exception {
                         if (async) {
                             throw new AssertionError("should not be called");
                         } else {

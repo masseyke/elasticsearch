@@ -23,7 +23,7 @@ class WrappingProcessorImpl extends FakeProcessor implements WrappingProcessor {
         String theDescription = getDescription();
         return new Processor() {
             @Override
-            public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+            public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
                 return ingestDocument;
             }
 

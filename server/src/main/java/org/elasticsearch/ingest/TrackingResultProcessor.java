@@ -140,7 +140,7 @@ public final class TrackingResultProcessor implements Processor {
             return;
         }
 
-        executeProcessor(actualProcessor, ingestDocument, (result, e) -> {
+        executeProcessor(actualProcessor, ingestDocument, context, (result, e) -> {
             if (e != null) {
                 if (ignoreFailure) {
                     processorResultList.add(
@@ -192,12 +192,12 @@ public final class TrackingResultProcessor implements Processor {
         });
     }
 
-    private static void executeProcessor(Processor p, IngestDocument doc, BiConsumer<IngestDocument, Exception> handler) {
+    private static void executeProcessor(Processor p, IngestDocument doc, String context, BiConsumer<IngestDocument, Exception> handler) {
         if (p.isAsync()) {
-            p.execute(doc, handler);
+            p.execute(doc, context, handler);
         } else {
             try {
-                IngestDocument result = p.execute(doc);
+                IngestDocument result = p.execute(doc, context);
                 handler.accept(result, null);
             } catch (Exception e) {
                 handler.accept(null, e);

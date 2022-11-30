@@ -54,7 +54,7 @@ class SimulateExecutionService {
                 (result, e) -> { handler.accept(new SimulateDocumentVerboseResult(processorResultList), e); }
             );
         } else {
-            ingestDocument.executePipeline(pipeline,"simulation", (result, e) -> {
+            ingestDocument.executePipeline(pipeline, "simulation", (result, e) -> {
                 if (e == null) {
                     handler.accept(new SimulateDocumentBaseResult(result), null);
                 } else {

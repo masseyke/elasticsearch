@@ -126,7 +126,7 @@ public class CompoundProcessorTests extends ESTestCase {
         TestProcessor processor1 = new TestProcessor("id", "first", null, new RuntimeException("error"));
         Processor processor2 = new Processor() {
             @Override
-            public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+            public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
                 // Simulates the drop processor
                 return null;
             }
@@ -368,12 +368,12 @@ public class CompoundProcessorTests extends ESTestCase {
         );
         Pipeline pipeline1 = new Pipeline("1", null, null, null, new CompoundProcessor(false, List.of(new AbstractProcessor(null, null) {
             @Override
-            public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+            public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
                 throw new AssertionError();
             }
 
             @Override
-            public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+            public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
                 IngestDocument[] result = new IngestDocument[1];
                 Exception[] error = new Exception[1];
 
@@ -434,7 +434,7 @@ public class CompoundProcessorTests extends ESTestCase {
         );
         Pipeline pipeline1 = new Pipeline("1", null, null, null, new CompoundProcessor(new AbstractProcessor(null, null) {
             @Override
-            public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+            public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
                 IngestDocument[] result = new IngestDocument[1];
                 Exception[] error = new Exception[1];
 
@@ -449,7 +449,7 @@ public class CompoundProcessorTests extends ESTestCase {
             }
 
             @Override
-            public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+            public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
                 throw new UnsupportedOperationException();
             }
 
@@ -543,10 +543,10 @@ public class CompoundProcessorTests extends ESTestCase {
     // delegates to appropriate sync or async method
     private static void executeCompound(CompoundProcessor cp, IngestDocument doc, BiConsumer<IngestDocument, Exception> handler) {
         if (cp.isAsync()) {
-            cp.execute(doc, handler);
+            cp.execute(doc, randomAlphaOfLength(5), handler);
         } else {
             try {
-                IngestDocument result = cp.execute(doc);
+                IngestDocument result = cp.execute(doc, randomAlphaOfLength(5));
                 handler.accept(result, null);
             } catch (Exception e) {
                 handler.accept(null, e);

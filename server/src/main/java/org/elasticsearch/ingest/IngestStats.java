@@ -151,14 +151,7 @@ public class IngestStats implements Writeable, ToXContentFragment {
                     builder.startObject(pipelineStat.getPipelineId());
                     pipelineStat.getStats().toXContent(builder, params);
                     if (topLevelPipelineNames.contains(pipelineStat.getPipelineId())) {
-                        processorsToXContent(
-                            pipelineStat.getPipelineId(),
-                            pipelineStat,
-                            processorStats,
-                            pipelineStatMap,
-                            builder,
-                            params
-                        );
+                        processorsToXContent(pipelineStat.getPipelineId(), pipelineStat, processorStats, pipelineStatMap, builder, params);
                     }
                     builder.endObject();
                 } catch (IOException e) {

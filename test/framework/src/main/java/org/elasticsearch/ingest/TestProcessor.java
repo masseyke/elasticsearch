@@ -53,7 +53,7 @@ public class TestProcessor implements Processor {
     }
 
     @Override
-    public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+    public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
         invokedCounter.incrementAndGet();
 
         try {
@@ -71,7 +71,7 @@ public class TestProcessor implements Processor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         invokedCounter.incrementAndGet();
         return ingestDocumentMapper.apply(ingestDocument);
     }

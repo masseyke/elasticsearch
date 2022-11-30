@@ -24,7 +24,7 @@ public class FakeProcessor implements Processor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         executor.accept(ingestDocument);
         return ingestDocument;
     }

@@ -335,7 +335,7 @@ public class SimulateExecutionServiceTests extends ESTestCase {
         Processor processor1 = new AbstractProcessor(null, null) {
 
             @Override
-            public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+            public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
                 threadPool.executor(ThreadPool.Names.GENERIC).execute(() -> {
                     ingestDocument.setFieldValue("processed", true);
                     handler.accept(ingestDocument, null);
@@ -343,7 +343,7 @@ public class SimulateExecutionServiceTests extends ESTestCase {
             }
 
             @Override
-            public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+            public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
                 throw new UnsupportedOperationException();
             }
 

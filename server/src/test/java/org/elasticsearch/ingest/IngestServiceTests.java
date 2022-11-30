@@ -496,7 +496,7 @@ public class IngestServiceTests extends ESTestCase {
             } else {
                 return new AbstractProcessor(tag, description) {
                     @Override
-                    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+                    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
                         throw new RuntimeException("reload me");
                     }
 
@@ -520,9 +520,8 @@ public class IngestServiceTests extends ESTestCase {
         {
             Exception[] exceptionHolder = new Exception[1];
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), new HashMap<>());
-            ingestService.getPipeline("_id1").execute(ingestDocument,
-                randomAlphaOfLength(5),
-                (ingestDocument1, e) -> exceptionHolder[0] = e);
+            ingestService.getPipeline("_id1")
+                .execute(ingestDocument, randomAlphaOfLength(5), (ingestDocument1, e) -> exceptionHolder[0] = e);
             assertThat(exceptionHolder[0], notNullValue());
             assertThat(exceptionHolder[0].getMessage(), containsString("reload me"));
             assertThat(ingestDocument.getSourceAndMetadata().get("_field"), nullValue());
@@ -534,9 +533,7 @@ public class IngestServiceTests extends ESTestCase {
         {
             Exception[] holder = new Exception[1];
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), new HashMap<>());
-            ingestService.getPipeline("_id1").execute(ingestDocument,
-                randomAlphaOfLength(5),
-                (ingestDocument1, e) -> holder[0] = e);
+            ingestService.getPipeline("_id1").execute(ingestDocument, randomAlphaOfLength(5), (ingestDocument1, e) -> holder[0] = e);
             assertThat(holder[0], nullValue());
             assertThat(ingestDocument.getSourceAndMetadata().get("_field"), equalTo("_value"));
         }
@@ -923,7 +920,7 @@ public class IngestServiceTests extends ESTestCase {
         IngestService ingestService = createWithProcessors(
             Collections.singletonMap("mock", (factories, tag, description, config) -> new AbstractProcessor("mock", "description") {
                 @Override
-                public IngestDocument execute(IngestDocument ingestDocument) {
+                public IngestDocument execute(IngestDocument ingestDocument, String context) {
                     throw new IllegalStateException("error");
                 }
 
@@ -1025,6 +1022,7 @@ public class IngestServiceTests extends ESTestCase {
         verify(completionHandler, times(1)).accept(Thread.currentThread(), null);
     }
 
+    @SuppressWarnings("unchecked")
     public void testExecuteSuccess() {
         IngestService ingestService = createWithProcessors(
             Collections.singletonMap("mock", (factories, tag, description, config) -> mockCompoundProcessor())
@@ -1098,6 +1096,7 @@ public class IngestServiceTests extends ESTestCase {
         assertThat(indexRequest.getDynamicTemplates(), equalTo(Map.of("foo", "bar", "foo.bar", "baz")));
     }
 
+    @SuppressWarnings("unchecked")
     public void testExecuteEmptyPipeline() throws Exception {
         IngestService ingestService = createWithProcessors(emptyMap());
         PutPipelineRequest putRequest = new PutPipelineRequest("_id", new BytesArray("""
@@ -1126,6 +1125,7 @@ public class IngestServiceTests extends ESTestCase {
         verify(completionHandler, times(1)).accept(Thread.currentThread(), null);
     }
 
+    @SuppressWarnings("unchecked")
     public void testExecutePropagateAllMetadataUpdates() throws Exception {
         final CompoundProcessor processor = mockCompoundProcessor();
         IngestService ingestService = createWithProcessors(
@@ -1168,7 +1168,7 @@ public class IngestServiceTests extends ESTestCase {
             BiConsumer<IngestDocument, Exception> handler = (BiConsumer<IngestDocument, Exception>) invocationOnMock.getArguments()[1];
             handler.accept(ingestDocument, null);
             return null;
-        }).when(processor).execute(any(), any(BiConsumer.class));
+        }).when(processor).execute(any(), any(), any(BiConsumer.class));
         final IndexRequest indexRequest = new IndexRequest("_index").id("_id")
             .source(emptyMap())
             .setPipeline("_id")
@@ -1185,7 +1185,7 @@ public class IngestServiceTests extends ESTestCase {
             indexReq -> {},
             Names.WRITE
         );
-        verify(processor).execute(any(), any(BiConsumer.class));
+        verify(processor).execute(any(), any(), any(BiConsumer.class));
         verify(failureHandler, never()).accept(any(), any());
         verify(completionHandler, times(1)).accept(Thread.currentThread(), null);
         assertThat(indexRequest.index(), equalTo("update_index"));
@@ -1197,6 +1197,7 @@ public class IngestServiceTests extends ESTestCase {
         assertThat(indexRequest.ifPrimaryTerm(), equalTo(ifPrimaryTerm));
     }
 
+    @SuppressWarnings("unchecked")
     public void testExecuteFailure() throws Exception {
         final CompoundProcessor processor = mockCompoundProcessor();
         IngestService ingestService = createWithProcessors(
@@ -1216,7 +1217,7 @@ public class IngestServiceTests extends ESTestCase {
             .setPipeline("_id")
             .setFinalPipeline("_none");
         doThrow(new RuntimeException()).when(processor)
-            .execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(BiConsumer.class));
+            .execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(), any(BiConsumer.class));
         @SuppressWarnings("unchecked")
         final BiConsumer<Integer, Exception> failureHandler = mock(BiConsumer.class);
         @SuppressWarnings("unchecked")
@@ -1229,11 +1230,16 @@ public class IngestServiceTests extends ESTestCase {
             indexReq -> {},
             Names.WRITE
         );
-        verify(processor).execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(BiConsumer.class));
+        verify(processor).execute(
+            eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()),
+            any(),
+            any(BiConsumer.class)
+        );
         verify(failureHandler, times(1)).accept(eq(0), any(RuntimeException.class));
         verify(completionHandler, times(1)).accept(Thread.currentThread(), null);
     }
 
+    @SuppressWarnings("unchecked")
     public void testExecuteSuccessWithOnFailure() throws Exception {
         final Processor processor = mock(Processor.class);
         when(processor.getType()).thenReturn("mock_processor_type");
@@ -1243,7 +1249,7 @@ public class IngestServiceTests extends ESTestCase {
             BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
             handler.accept(null, new RuntimeException());
             return null;
-        }).when(processor).execute(eqIndexTypeId(emptyMap()), any(BiConsumer.class));
+        }).when(processor).execute(eqIndexTypeId(emptyMap()), any(), any(BiConsumer.class));
 
         final Processor onFailureProcessor = mock(Processor.class);
         doAnswer(args -> {
@@ -1252,7 +1258,7 @@ public class IngestServiceTests extends ESTestCase {
             BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
             handler.accept(ingestDocument, null);
             return null;
-        }).when(onFailureProcessor).execute(eqIndexTypeId(emptyMap()), any(BiConsumer.class));
+        }).when(onFailureProcessor).execute(eqIndexTypeId(emptyMap()), any(), any(BiConsumer.class));
 
         final CompoundProcessor compoundProcessor = new CompoundProcessor(
             false,
@@ -1291,6 +1297,7 @@ public class IngestServiceTests extends ESTestCase {
         verify(completionHandler, times(1)).accept(Thread.currentThread(), null);
     }
 
+    @SuppressWarnings("unchecked")
     public void testExecuteFailureWithNestedOnFailure() throws Exception {
         final Processor processor = mock(Processor.class);
         when(processor.isAsync()).thenReturn(true);
@@ -1322,11 +1329,11 @@ public class IngestServiceTests extends ESTestCase {
             .setPipeline("_id")
             .setFinalPipeline("_none");
         doThrow(new RuntimeException()).when(onFailureOnFailureProcessor)
-            .execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(BiConsumer.class));
+            .execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(), any(BiConsumer.class));
         doThrow(new RuntimeException()).when(onFailureProcessor)
-            .execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(BiConsumer.class));
+            .execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(), any(BiConsumer.class));
         doThrow(new RuntimeException()).when(processor)
-            .execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(BiConsumer.class));
+            .execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(), any(BiConsumer.class));
         @SuppressWarnings("unchecked")
         final BiConsumer<Integer, Exception> failureHandler = mock(BiConsumer.class);
         @SuppressWarnings("unchecked")
@@ -1339,11 +1346,16 @@ public class IngestServiceTests extends ESTestCase {
             indexReq -> {},
             Names.WRITE
         );
-        verify(processor).execute(eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()), any(BiConsumer.class));
+        verify(processor).execute(
+            eqIndexTypeId(indexRequest.version(), indexRequest.versionType(), emptyMap()),
+            any(),
+            any(BiConsumer.class)
+        );
         verify(failureHandler, times(1)).accept(eq(0), any(RuntimeException.class));
         verify(completionHandler, times(1)).accept(Thread.currentThread(), null);
     }
 
+    @SuppressWarnings("unchecked")
     public void testBulkRequestExecutionWithFailures() throws Exception {
         BulkRequest bulkRequest = new BulkRequest();
         String pipelineId = "_id";
@@ -1376,7 +1388,7 @@ public class IngestServiceTests extends ESTestCase {
             BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
             handler.accept(null, error);
             return null;
-        }).when(processor).execute(any(), any(BiConsumer.class));
+        }).when(processor).execute(any(), any(), any(BiConsumer.class));
         IngestService ingestService = createWithProcessors(
             Collections.singletonMap("mock", (factories, tag, description, config) -> processor)
         );
@@ -1407,6 +1419,7 @@ public class IngestServiceTests extends ESTestCase {
         verify(completionHandler, times(1)).accept(Thread.currentThread(), null);
     }
 
+    @SuppressWarnings("unchecked")
     public void testBulkRequestExecution() throws Exception {
         BulkRequest bulkRequest = new BulkRequest();
         String pipelineId = "_id";
@@ -1432,7 +1445,7 @@ public class IngestServiceTests extends ESTestCase {
             BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
             handler.accept(RandomDocumentPicks.randomIngestDocument(random()), null);
             return null;
-        }).when(processor).execute(any(), any(BiConsumer.class));
+        }).when(processor).execute(any(), any(), any(BiConsumer.class));
         Map<String, Processor.Factory> map = Maps.newMapWithExpectedSize(2);
         map.put("mock", (factories, tag, description, config) -> processor);
 
@@ -1466,6 +1479,7 @@ public class IngestServiceTests extends ESTestCase {
         }
     }
 
+    @SuppressWarnings("unchecked")
     public void testStats() throws Exception {
         final Processor processor = mock(Processor.class);
         final Processor processorFailure = mock(Processor.class);
@@ -1480,13 +1494,13 @@ public class IngestServiceTests extends ESTestCase {
             BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
             handler.accept(RandomDocumentPicks.randomIngestDocument(random()), null);
             return null;
-        }).when(processor).execute(any(IngestDocument.class), any(BiConsumer.class));
+        }).when(processor).execute(any(IngestDocument.class), any(), any(BiConsumer.class));
         doAnswer(args -> {
             @SuppressWarnings("unchecked")
             BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
             handler.accept(null, new RuntimeException("error"));
             return null;
-        }).when(processorFailure).execute(any(IngestDocument.class), any(BiConsumer.class));
+        }).when(processorFailure).execute(any(IngestDocument.class), any(), any(BiConsumer.class));
         Map<String, Processor.Factory> map = Maps.newMapWithExpectedSize(2);
         map.put("mock", (factories, tag, description, config) -> processor);
         map.put("failure-mock", (factories, tag, description, config) -> processorFailure);
@@ -1650,7 +1664,7 @@ public class IngestServiceTests extends ESTestCase {
         factories.put("drop", new DropProcessor.Factory());
         factories.put("mock", (processorFactories, tag, description, config) -> new Processor() {
             @Override
-            public IngestDocument execute(final IngestDocument ingestDocument) {
+            public IngestDocument execute(final IngestDocument ingestDocument, String context) {
                 throw new AssertionError("Document should have been dropped but reached this processor");
             }
 
@@ -2208,6 +2222,7 @@ public class IngestServiceTests extends ESTestCase {
         }), client);
     }
 
+    @SuppressWarnings("unchecked")
     private CompoundProcessor mockCompoundProcessor() {
         CompoundProcessor processor = mock(CompoundProcessor.class);
         doAnswer(args -> true).when(processor).isAsync();
@@ -2216,7 +2231,7 @@ public class IngestServiceTests extends ESTestCase {
             BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
             handler.accept((IngestDocument) args.getArguments()[0], null);
             return null;
-        }).when(processor).execute(any(), any(BiConsumer.class));
+        }).when(processor).execute(any(), any(), any(BiConsumer.class));
         return processor;
     }
 

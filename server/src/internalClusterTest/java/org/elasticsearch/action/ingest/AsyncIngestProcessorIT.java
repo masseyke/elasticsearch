@@ -23,9 +23,7 @@ import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.env.NodeEnvironment;
 import org.elasticsearch.ingest.AbstractProcessor;
-import org.elasticsearch.ingest.ConfigurationUtils;
 import org.elasticsearch.ingest.IngestDocument;
-import org.elasticsearch.ingest.IngestService;
 import org.elasticsearch.ingest.IngestStats;
 import org.elasticsearch.ingest.PipelineProcessor;
 import org.elasticsearch.ingest.Processor;
@@ -33,7 +31,6 @@ import org.elasticsearch.plugins.IngestPlugin;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.repositories.RepositoriesService;
 import org.elasticsearch.script.ScriptService;
-import org.elasticsearch.script.TemplateScript;
 import org.elasticsearch.test.ESSingleNodeTestCase;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.tracing.Tracer;
@@ -72,17 +69,13 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
     }
 
     public void testAsyncProcessorImplementation() throws IOException {
-        // String innerPipeline = """
-        // {"processors": [
-        // {"test-async3": {}, "test3": {}, "test-async4": {}, "test-async5": {}, "test-async6": {}, "test-async7": {}}
-        // ]
-        // }
-        // """;
         String innerInnerPipeline = """
             {
                 "processors": [
                     {
-                        "test-async3": {"description": "test-async3-in-innerInner"}
+                        "test-async3": {
+                            "description": "test-async3-in-innerInner"
+                        }
                     }
                 ]
             }
@@ -96,8 +89,13 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
             {
                 "processors": [
                     {
-                        "test-async3": {"description": "test-async3-in-inner"},
-                        "pipeline": {"name": "innerInnerPipeline", "description":"innerInnerPipeline-in-inner"}
+                        "test-async3": {
+                            "description": "test-async3-in-inner"
+                        },
+                        "pipeline": {
+                            "name": "innerInnerPipeline",
+                            "description": "innerInnerPipeline-in-inner"
+                        }
                     }
                 ]
             }
@@ -107,15 +105,6 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
             .cluster()
             .putPipeline(new PutPipelineRequest("innerPipeline", innerPipelineReference, XContentType.JSON))
             .actionGet();
-
-        // String outerPipeline = """
-        // {"processors": [
-        // {"conditional1": {}},
-        // {"pipeline": {"name": "innerPipeline"}}, {"test-async2": {}, "test2": {}},
-        // {"test-async3": {}, "test3": {}, "test-async4": {}, "test-async5": {}, "test-async6": {}, "test-async7": {}}
-        // ]
-        // }
-        // """;
         String outerPipeline = """
             {
                 "processors": [
@@ -126,10 +115,12 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
                         }
                     },
                     {
-                        "test-async3": {"description": "test-async3-in-outer"},
-                                                "pipeline": {
-                        "name":"innerInnerPipeline",
-                        "description": "innerInnerPipeline-in-outer"
+                        "test-async3": {
+                            "description": "test-async3-in-outer"
+                        },
+                        "pipeline": {
+                            "name": "innerInnerPipeline",
+                            "description": "innerInnerPipeline-in-outer"
                         }
                     }
                 ]
@@ -160,8 +151,6 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
             .actionGet();
         IngestStats ingestStats = nodesStatsResponse.getNodes().get(0).getIngestStats();
         Map<String, Object> ingestStatsMap = xContentToMap(ingestStats);
-        // ((List<Map<String, Object>>)((Map<String, Object>) ((Map<String, Object>)
-        // ingestStatsMap.get("pipelines")).get("outerPipeline")).get("processors")).get(1)
         assertNotNull(ingestStats);
     }
 
@@ -179,10 +168,6 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
     public static class TestPlugin extends Plugin implements IngestPlugin {
 
         private ThreadPool threadPool;
-        private Client client;
-        private ClusterService clusterService;
-        private ScriptService scriptService;
-        private Environment environment;
 
         @Override
         public Collection<Object> createComponents(
@@ -201,10 +186,6 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
             AllocationDeciders allocationDeciders
         ) {
             this.threadPool = threadPool;
-            this.client = client;
-            this.clusterService = clusterService;
-            this.scriptService = scriptService;
-            this.environment = environment;
             return List.of();
         }
 
@@ -256,99 +237,9 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
                     }
                 });
             }
-//            procMap.put("conditional1", (factories, tag, description, config) -> getConditionalProcessor(tag, description));
             Processor.Factory pipelineFactory1 = new PipelineProcessor.Factory(parameters.ingestService);
-//            Processor.Factory pipelineFactory = (factories, tag, description, config) -> {
-//                IngestService ingestService = new IngestService(
-//                    clusterService,
-//                    threadPool,
-//                    environment,
-//                    scriptService,
-//                    null,
-//                    List.of(this),
-//                    client
-//                );
-//                TemplateScript.Factory pipelineTemplate = ConfigurationUtils.readTemplateProperty(
-//                    PipelineProcessor.TYPE,
-//                    tag,
-//                    config,
-//                    "name",
-//                    ingestService.getScriptService()
-//                );
-//                return new PipelineProcessor(tag, description, new TemplateScript.Factory() {
-//                    @Override
-//                    public TemplateScript newInstance(Map<String, Object> params) {
-//                        return new TemplateScript(Map.of()) {
-//                            @Override
-//                            public String execute() {
-//                                return "done";
-//                            }
-//                        };
-//                    }
-//                }, true, ingestService);
-//            };
             procMap.put("pipeline", pipelineFactory1);
             return procMap;
         }
     }
-
-//    private static ConditionalProcessor getConditionalProcessor(String tag, String description) {
-//        String conditionalField = "field1";
-//        String scriptName = "conditionalScript";
-//        String trueValue = "truthy";
-//        ScriptService scriptService = new ScriptService(
-//            Settings.builder().build(),
-//            Collections.singletonMap(
-//                Script.DEFAULT_SCRIPT_LANG,
-//                new MockScriptEngine(
-//                    Script.DEFAULT_SCRIPT_LANG,
-//                    Collections.singletonMap(scriptName, ctx -> trueValue.equals(ctx.get(conditionalField))),
-//                    Collections.emptyMap()
-//                )
-//            ),
-//            new HashMap<>(ScriptModule.CORE_CONTEXTS),
-//            () -> 1L
-//        );
-//        Map<String, Object> document = new HashMap<>();
-//        LongSupplier relativeTimeProvider = mock(LongSupplier.class);
-//        when(relativeTimeProvider.getAsLong()).thenReturn(0L, TimeUnit.MILLISECONDS.toNanos(1), 0L, TimeUnit.MILLISECONDS.toNanos(2));
-//        ConditionalProcessor processor = new ConditionalProcessor(
-//            tag,
-//            description,
-//            new Script(ScriptType.INLINE, Script.DEFAULT_SCRIPT_LANG, scriptName, Collections.emptyMap()),
-//            scriptService,
-//            new Processor() {
-//                @Override
-//                public IngestDocument execute(final IngestDocument ingestDocument) {
-//                    if (ingestDocument.hasField("error")) {
-//                        throw new RuntimeException("error");
-//                    }
-//                    ingestDocument.setFieldValue("foo", "bar");
-//                    return ingestDocument;
-//                }
-//
-//                @Override
-//                public String getType() {
-//                    return null;
-//                }
-//
-//                @Override
-//                public String getTag() {
-//                    return null;
-//                }
-//
-//                @Override
-//                public String getDescription() {
-//                    return null;
-//                }
-//
-//                @Override
-//                public boolean isAsync() {
-//                    return true;
-//                }
-//            },
-//            relativeTimeProvider
-//        );
-//        return processor;
-//    }
 }

@@ -60,7 +60,7 @@ public class CompoundProcessor implements Processor {
         this.onFailureProcessors = List.copyOf(onFailureProcessors);
         this.relativeTimeProvider = relativeTimeProvider;
         this.processorsWithContextAwareMetrics = processors.stream()
-            .map(p -> new Tuple<>(p, (Map<String, IngestMetric>) new ConcurrentHashMap()))
+            .map(p -> new Tuple<>(p, (Map<String, IngestMetric>) new ConcurrentHashMap<String, IngestMetric>()))
             .toList();
         this.isAsync = flattenProcessors().stream().anyMatch(Processor::isAsync);
     }
@@ -171,7 +171,7 @@ public class CompoundProcessor implements Processor {
 
             final long startTimeInNanos = relativeTimeProvider.getAsLong();
             try {
-                ingestDocument = processor.execute(ingestDocument);
+                ingestDocument = processor.execute(ingestDocument, context);
                 long ingestTimeInNanos = relativeTimeProvider.getAsLong() - startTimeInNanos;
                 metric.postIngest(ingestTimeInNanos);
                 if (ingestDocument == null) {
@@ -267,7 +267,7 @@ public class CompoundProcessor implements Processor {
         final Processor onFailureProcessor = onFailureProcessors.get(currentOnFailureProcessor);
         if (onFailureProcessor.isAsync()) {
             final IngestDocument finalDoc = ingestDocument;
-            onFailureProcessor.execute(finalDoc, (result, e) -> {
+            onFailureProcessor.execute(finalDoc, context, (result, e) -> {
                 if (e != null) {
                     removeFailureMetadata(finalDoc);
                     handler.accept(null, newCompoundProcessorException(e, onFailureProcessor, finalDoc));
@@ -282,7 +282,7 @@ public class CompoundProcessor implements Processor {
             });
         } else {
             try {
-                ingestDocument = onFailureProcessor.execute(ingestDocument);
+                ingestDocument = onFailureProcessor.execute(ingestDocument, context);
                 if (ingestDocument == null) {
                     handler.accept(null, null);
                     return;

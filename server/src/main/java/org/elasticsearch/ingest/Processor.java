@@ -35,10 +35,6 @@ public interface Processor {
      * Expert method: only override this method if a processor implementation needs to make an asynchronous call,
      * otherwise just overwrite {@link #execute(IngestDocument)}.
      */
-    default void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
-        execute(ingestDocument, "none", handler);
-    }
-
     default void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
         if (isAsync() == false) {
             handler.accept(
@@ -55,10 +51,6 @@ public interface Processor {
      * @return If <code>null</code> is returned then the current document will be dropped and not be indexed,
      *         otherwise this document will be kept and indexed
      */
-    default IngestDocument execute(IngestDocument ingestDocument) throws Exception {
-        return execute(ingestDocument, "none");
-    }
-
     default IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         if (isAsync()) {
             throw new UnsupportedOperationException("synchronous execute method should not be executed for async processors");
