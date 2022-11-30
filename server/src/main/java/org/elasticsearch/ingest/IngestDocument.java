@@ -825,15 +825,10 @@ public final class IngestDocument {
      * @param pipeline the pipeline to execute
      * @param handler handles the result or failure
      */
-    public void executePipeline(Pipeline pipeline, BiConsumer<IngestDocument, Exception> handler) {
+    public void executePipeline(Pipeline pipeline, String context, BiConsumer<IngestDocument, Exception> handler) {
         if (executedPipelines.add(pipeline.getId())) {
             Object previousPipeline = ingestMetadata.put("pipeline", pipeline.getId());
-            String breadCrumbString = updateBreadCrumb(
-                previousPipeline == null ? null : previousPipeline.toString(),
-                pipeline.getId(),
-                ingestMetadata
-            );
-            pipeline.execute(this, breadCrumbString, (result, e) -> {
+            pipeline.execute(this, context, (result, e) -> {
                 executedPipelines.remove(pipeline.getId());
                 if (previousPipeline != null) {
                     ingestMetadata.put("pipeline", previousPipeline);
@@ -845,42 +840,6 @@ public final class IngestDocument {
         } else {
             handler.accept(null, new IllegalStateException(PIPELINE_CYCLE_ERROR_MESSAGE + pipeline.getId()));
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    private String updateBreadCrumb(String previousPipeline, String currentPipeline, Map<String, Object> ingestMetadata) {
-        Object breadCrumbObject = ingestMetadata.get("pipelineBreadCrumb");
-        List<String> breadCrumbList;
-        if (breadCrumbObject == null) {
-            breadCrumbList = new ArrayList<>();
-            ingestMetadata.put("pipelineBreadCrumb", breadCrumbList);
-        } else {
-            breadCrumbList = (List<String>) breadCrumbObject;
-        }
-        if (previousPipeline == null) {
-            breadCrumbList.add(currentPipeline);
-        } else {
-            // walk the list to find where we are:
-            int previousPipelineIndex = -1;
-            for (int i = 0; i < breadCrumbList.size(); i++) {
-                if (previousPipeline.equals(breadCrumbList.get(i))) {
-                    previousPipelineIndex = i;
-                    break;
-                }
-            }
-            if (previousPipelineIndex == -1 || previousPipelineIndex == breadCrumbList.size() - 1) {
-                breadCrumbList.add(currentPipeline);
-            } else {
-                List<String> newBreadCrumbList = new ArrayList<>();
-                for (int i = 0; i <= previousPipelineIndex; i++) {
-                    newBreadCrumbList.add(breadCrumbList.get(i));
-                }
-                newBreadCrumbList.add(currentPipeline);
-                breadCrumbList = newBreadCrumbList;
-                ingestMetadata.put("pipelineBreadCrumb", breadCrumbList);
-            }
-        }
-        return String.join(":", breadCrumbList);
     }
 
     /**

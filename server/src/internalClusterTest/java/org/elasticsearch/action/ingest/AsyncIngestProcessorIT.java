@@ -216,7 +216,7 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
                 procMap.put("test-async" + i, (factories, tag, description, config) -> new AbstractProcessor(tag, description) {
 
                     @Override
-                    public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+                    public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
                         threadPool.generic().execute(() -> {
                             String id = (String) ingestDocument.getSourceAndMetadata().get("_id");
                             if (usually()) {
@@ -244,7 +244,7 @@ public class AsyncIngestProcessorIT extends ESSingleNodeTestCase {
                 });
                 procMap.put("test" + i, (processorFactories, tag, description, config) -> new AbstractProcessor(tag, description) {
                     @Override
-                    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+                    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
                         String id = (String) ingestDocument.getSourceAndMetadata().get("_id");
                         ingestDocument.setFieldValue(randomAlphaOfLength(5), "baz-" + id);
                         return ingestDocument;

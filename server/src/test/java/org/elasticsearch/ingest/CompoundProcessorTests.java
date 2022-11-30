@@ -377,7 +377,7 @@ public class CompoundProcessorTests extends ESTestCase {
                 IngestDocument[] result = new IngestDocument[1];
                 Exception[] error = new Exception[1];
 
-                ingestDocument.executePipeline(pipeline2, (document, e) -> {
+                ingestDocument.executePipeline(pipeline2, randomAlphaOfLength(5), (document, e) -> {
                     result[0] = document;
                     error[0] = e;
                 });
@@ -398,7 +398,7 @@ public class CompoundProcessorTests extends ESTestCase {
             }
         }), List.of(onFailureProcessor)));
 
-        ingestDocument.executePipeline(pipeline1, (document, e) -> {
+        ingestDocument.executePipeline(pipeline1, randomAlphaOfLength(5), (document, e) -> {
             assertThat(document, notNullValue());
             assertThat(e, nullValue());
         });
@@ -438,7 +438,7 @@ public class CompoundProcessorTests extends ESTestCase {
                 IngestDocument[] result = new IngestDocument[1];
                 Exception[] error = new Exception[1];
 
-                ingestDocument.executePipeline(pipeline2, (document, e) -> {
+                ingestDocument.executePipeline(pipeline2, randomAlphaOfLength(5), (document, e) -> {
                     result[0] = document;
                     error[0] = e;
                 });
@@ -465,7 +465,7 @@ public class CompoundProcessorTests extends ESTestCase {
         }));
 
         Exception[] holder = new Exception[1];
-        ingestDocument.executePipeline(pipeline1, (document, e) -> holder[0] = e);
+        ingestDocument.executePipeline(pipeline1, randomAlphaOfLength(5), (document, e) -> holder[0] = e);
         IngestProcessorException ingestProcessorException = (IngestProcessorException) holder[0];
         assertThat(ingestProcessorException.getHeader("processor_tag"), equalTo(List.of("my_tag")));
         assertThat(ingestProcessorException.getHeader("processor_type"), equalTo(List.of("my_type")));

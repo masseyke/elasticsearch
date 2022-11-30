@@ -218,7 +218,7 @@ public class CompoundProcessor implements Processor {
         finalMetric.preIngest();
         final AtomicBoolean postIngestHasBeenCalled = new AtomicBoolean(false);
         try {
-            finalProcessor.execute(ingestDocument, (result, e) -> {
+            finalProcessor.execute(ingestDocument, context, (result, e) -> {
                 if (listenerHasBeenCalled.getAndSet(true)) {
                     logger.warn("A listener was unexpectedly called more than once", new RuntimeException(e));
                     assert false : "A listener was unexpectedly called more than once";
@@ -266,7 +266,7 @@ public class CompoundProcessor implements Processor {
             if (onFailureProcessors.isEmpty()) {
                 handler.accept(null, compoundProcessorException);
             } else {
-                executeOnFailure(0, ingestDocument, compoundProcessorException, handler);
+                executeOnFailure(0, ingestDocument, compoundProcessorException, context, handler);
             }
         }
     }
@@ -275,6 +275,7 @@ public class CompoundProcessor implements Processor {
         int currentOnFailureProcessor,
         IngestDocument ingestDocument,
         ElasticsearchException exception,
+        String context,
         BiConsumer<IngestDocument, Exception> handler
     ) {
         if (currentOnFailureProcessor == 0) {
@@ -301,7 +302,7 @@ public class CompoundProcessor implements Processor {
                     handler.accept(null, null);
                     return;
                 }
-                executeOnFailure(currentOnFailureProcessor + 1, finalDoc, exception, handler);
+                executeOnFailure(currentOnFailureProcessor + 1, finalDoc, exception, context, handler);
             });
         } else {
             try {
@@ -317,7 +318,7 @@ public class CompoundProcessor implements Processor {
                 handler.accept(null, newCompoundProcessorException(e, onFailureProcessor, ingestDocument));
                 return;
             }
-            executeOnFailure(currentOnFailureProcessor + 1, ingestDocument, exception, handler);
+            executeOnFailure(currentOnFailureProcessor + 1, ingestDocument, exception, context, handler);
         }
     }
 

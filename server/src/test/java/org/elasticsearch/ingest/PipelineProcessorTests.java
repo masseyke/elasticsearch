@@ -196,7 +196,7 @@ public class PipelineProcessorTests extends ESTestCase {
 
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), new HashMap<>());
         // start the chain
-        ingestDocument.executePipeline(pipeline1, (result, e) -> {});
+        ingestDocument.executePipeline(pipeline1, randomAlphaOfLength(5), (result, e) -> {});
         assertNotNull(ingestDocument.getSourceAndMetadata().get(key1));
 
         // check the stats
@@ -261,7 +261,7 @@ public class PipelineProcessorTests extends ESTestCase {
         IngestDocument testIngestDocument = RandomDocumentPicks.randomIngestDocument(random(), new HashMap<>());
         IngestDocument[] docHolder = new IngestDocument[1];
         Exception[] errorHolder = new Exception[1];
-        testIngestDocument.executePipeline(firstPipeline, (doc, e) -> {
+        testIngestDocument.executePipeline(firstPipeline, randomAlphaOfLength(5), (doc, e) -> {
             docHolder[0] = doc;
             errorHolder[0] = e;
         });
