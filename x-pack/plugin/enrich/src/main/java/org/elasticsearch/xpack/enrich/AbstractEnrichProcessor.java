@@ -58,7 +58,7 @@ public abstract class AbstractEnrichProcessor extends AbstractProcessor {
     public abstract QueryBuilder getQueryBuilder(Object fieldValue);
 
     @Override
-    public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+    public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
         try {
             // If a document does not have the enrich key, return the unchanged document
             String renderedField = ingestDocument.renderTemplate(this.field);
@@ -114,7 +114,7 @@ public abstract class AbstractEnrichProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         throw new UnsupportedOperationException("this method should not get executed");
     }
 

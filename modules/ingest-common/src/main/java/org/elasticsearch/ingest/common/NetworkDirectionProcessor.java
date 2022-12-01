@@ -101,7 +101,7 @@ public class NetworkDirectionProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         String direction = getDirection(ingestDocument);
         if (direction == null) {
             if (ignoreMissing) {

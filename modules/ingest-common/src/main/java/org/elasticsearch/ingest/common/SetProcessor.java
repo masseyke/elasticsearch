@@ -77,7 +77,7 @@ public final class SetProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument document) {
+    public IngestDocument execute(IngestDocument document, String context) {
         if (overrideEnabled || document.hasField(field) == false || document.getFieldValue(field, Object.class) == null) {
             if (copyFrom != null) {
                 Object fieldValue = document.getFieldValue(copyFrom, Object.class, ignoreEmptyValue);

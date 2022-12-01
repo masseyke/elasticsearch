@@ -129,7 +129,7 @@ public final class CommunityIdProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         String sourceIp = ingestDocument.getFieldValue(sourceIpField, String.class, ignoreMissing);
         String destinationIp = ingestDocument.getFieldValue(destinationIpField, String.class, ignoreMissing);
         Object ianaNumber = ingestDocument.getFieldValue(ianaNumberField, Object.class, true);

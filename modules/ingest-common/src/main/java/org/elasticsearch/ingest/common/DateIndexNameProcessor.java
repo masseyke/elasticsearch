@@ -59,7 +59,7 @@ public final class DateIndexNameProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         // Date can be specified as a string or long:
         Object obj = ingestDocument.getFieldValue(field, Object.class);
         String date = null;

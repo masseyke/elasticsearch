@@ -37,7 +37,7 @@ public final class DotExpanderProcessor extends AbstractProcessor {
 
     @Override
     @SuppressWarnings("unchecked")
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         String pathToExpand;
         Map<String, Object> map;
         if (this.path != null) {

@@ -52,7 +52,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", "8.8.8.8");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertThat(ingestDocument.getSourceAndMetadata().get("source_field"), equalTo("8.8.8.8"));
         @SuppressWarnings("unchecked")
@@ -87,7 +87,7 @@ public class GeoIpProcessorTests extends ESTestCase {
             Collections.singletonMap("source_field", null)
         );
         IngestDocument ingestDocument = new IngestDocument(originalIngestDocument);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
         assertIngestDocument(originalIngestDocument, ingestDocument);
     }
 
@@ -106,7 +106,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         );
         IngestDocument originalIngestDocument = RandomDocumentPicks.randomIngestDocument(random(), Collections.emptyMap());
         IngestDocument ingestDocument = new IngestDocument(originalIngestDocument);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
         assertIngestDocument(originalIngestDocument, ingestDocument);
     }
 
@@ -128,7 +128,7 @@ public class GeoIpProcessorTests extends ESTestCase {
             Collections.singletonMap("source_field", null)
         );
         IngestDocument ingestDocument = new IngestDocument(originalIngestDocument);
-        Exception exception = expectThrows(Exception.class, () -> processor.execute(ingestDocument));
+        Exception exception = expectThrows(Exception.class, () -> processor.execute(ingestDocument, randomAlphaOfLength(5)));
         assertThat(exception.getMessage(), equalTo("field [source_field] is null, cannot extract geoip information."));
     }
 
@@ -147,7 +147,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         );
         IngestDocument originalIngestDocument = RandomDocumentPicks.randomIngestDocument(random(), Collections.emptyMap());
         IngestDocument ingestDocument = new IngestDocument(originalIngestDocument);
-        Exception exception = expectThrows(Exception.class, () -> processor.execute(ingestDocument));
+        Exception exception = expectThrows(Exception.class, () -> processor.execute(ingestDocument, randomAlphaOfLength(5)));
         assertThat(exception.getMessage(), equalTo("field [source_field] not present as part of path [source_field]"));
     }
 
@@ -169,7 +169,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", address);
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertThat(ingestDocument.getSourceAndMetadata().get("source_field"), equalTo(address));
         @SuppressWarnings("unchecked")
@@ -206,7 +206,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", "80.231.5.0");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertThat(ingestDocument.getSourceAndMetadata().get("source_field"), equalTo("80.231.5.0"));
         @SuppressWarnings("unchecked")
@@ -232,7 +232,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", "82.170.213.79");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertThat(ingestDocument.getSourceAndMetadata().get("source_field"), equalTo("82.170.213.79"));
         @SuppressWarnings("unchecked")
@@ -261,7 +261,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", "80.231.5.0");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertThat(ingestDocument.getSourceAndMetadata().get("source_field"), equalTo("80.231.5.0"));
         @SuppressWarnings("unchecked")
@@ -288,7 +288,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", ip);
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertThat(ingestDocument.getSourceAndMetadata().get("source_field"), equalTo(ip));
         @SuppressWarnings("unchecked")
@@ -317,7 +317,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", "127.0.0.1");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
         assertThat(ingestDocument.getSourceAndMetadata().containsKey("target_field"), is(false));
     }
 
@@ -341,7 +341,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", "www.google.com");
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        Exception e = expectThrows(IllegalArgumentException.class, () -> processor.execute(ingestDocument));
+        Exception e = expectThrows(IllegalArgumentException.class, () -> processor.execute(ingestDocument, randomAlphaOfLength(5)));
         assertThat(e.getMessage(), containsString("not an IP string literal"));
     }
 
@@ -362,7 +362,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", Arrays.asList("8.8.8.8", "82.171.64.0"));
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> geoData = (List<Map<String, Object>>) ingestDocument.getSourceAndMetadata().get("target_field");
@@ -392,7 +392,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", Arrays.asList("8.8.8.8", "127.0.0.1"));
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> geoData = (List<Map<String, Object>>) ingestDocument.getSourceAndMetadata().get("target_field");
@@ -422,7 +422,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", Arrays.asList("127.0.0.1", "127.0.0.1"));
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertFalse(ingestDocument.hasField("target_field"));
     }
@@ -444,7 +444,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", Arrays.asList("8.8.8.8", "127.0.0.1"));
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> geoData = (Map<String, Object>) ingestDocument.getSourceAndMetadata().get("target_field");
@@ -472,7 +472,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", Arrays.asList("127.0.0.1", "127.0.0.2"));
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertThat(ingestDocument.getSourceAndMetadata().containsKey("target_field"), is(false));
     }
@@ -494,7 +494,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         Map<String, Object> document = new HashMap<>();
         document.put("source_field", Arrays.asList("127.0.0.1", "127.0.0.2"));
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         assertThat(ingestDocument.getSourceAndMetadata().containsKey("target_field"), is(false));
         assertThat(ingestDocument.getSourceAndMetadata(), hasEntry("tags", List.of("_geoip_expired_database")));
@@ -518,7 +518,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         document.put("source_field", "8.8.8.8");
         IngestDocument originalIngestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
         IngestDocument ingestDocument = new IngestDocument(originalIngestDocument);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
         assertThat(ingestDocument.getSourceAndMetadata().containsKey("target_field"), is(false));
         assertThat(ingestDocument.getSourceAndMetadata(), hasEntry("tags", List.of("_geoip_database_unavailable_GeoLite2-City")));
     }
@@ -541,7 +541,7 @@ public class GeoIpProcessorTests extends ESTestCase {
         document.put("source_field", "8.8.8.8");
         IngestDocument originalIngestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
         IngestDocument ingestDocument = new IngestDocument(originalIngestDocument);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
         assertIngestDocument(originalIngestDocument, ingestDocument);
     }
 

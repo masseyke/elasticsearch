@@ -222,7 +222,7 @@ public final class KeyValueProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument document) {
+    public IngestDocument execute(IngestDocument document, String context) {
         execution.accept(document);
         return document;
     }

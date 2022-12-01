@@ -553,14 +553,6 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
                 getProcessorMetrics(cp, processorMetrics);
             } else {
                 Map<String, IngestMetric> contextAwareMetrics = processorWithMetric.v2();
-                // Prefer the conditional's metric since it only includes metrics when the conditional evaluated to true.
-                if (processor instanceof ConditionalProcessor cp) {
-                    // TODO
-                    // for (Map.Entry<String, IngestMetric> entry : contextAwareMetrics) {
-                    //
-                    // }
-                    // metric = (cp.getMetric());
-                }
                 processorMetrics.add(new Tuple<>(processor, contextAwareMetrics));
             }
         }
@@ -850,9 +842,13 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
             processorMetrics.forEach(t -> {
                 Processor processor = t.v1();
                 Map<String, IngestMetric> contextToMetricMap = t.v2();
-                for (Map.Entry<String, IngestMetric> entry : contextToMetricMap.entrySet()) {
-                    IngestMetric processorMetric = entry.getValue();
-                    statsBuilder.addProcessorMetrics(entry.getKey(), getProcessorName(processor), processor.getType(), processorMetric);
+                if (contextToMetricMap.isEmpty()) {
+                    statsBuilder.addProcessorMetrics(id, getProcessorName(processor), processor.getType(), new IngestMetric());
+                } else {
+                    for (Map.Entry<String, IngestMetric> entry : contextToMetricMap.entrySet()) {
+                        IngestMetric processorMetric = entry.getValue();
+                        statsBuilder.addProcessorMetrics(entry.getKey(), getProcessorName(processor), processor.getType(), processorMetric);
+                    }
                 }
             });
         });
@@ -1050,12 +1046,16 @@ public class IngestService implements ClusterStateApplier, ReportingService<Inge
                         Map<String, IngestMetric> contextToMetricMap = compositeMetric.v2();
                         if (oldMetricsIterator.hasNext()) {
                             Tuple<Processor, Map<String, IngestMetric>> oldCompositeContextToMetric = oldMetricsIterator.next();
-                            for (Map.Entry<String, IngestMetric> entry : contextToMetricMap.entrySet()) {
-                                IngestMetric metric = entry.getValue();
-                                String oldType = oldCompositeContextToMetric.v1().getType();
-                                IngestMetric oldMetric = oldCompositeContextToMetric.v2().get(entry.getKey());
+                            String oldType = oldCompositeContextToMetric.v1().getType();
+                            for (Map.Entry<String, IngestMetric> entry : oldCompositeContextToMetric.v2().entrySet()) {
+                                IngestMetric oldMetric = entry.getValue();
+                                IngestMetric newMetric = contextToMetricMap.get(entry.getKey());
                                 if (type.equals(oldType)) {
-                                    metric.add(oldMetric);
+                                    if (newMetric == null) {
+                                        contextToMetricMap.put(entry.getKey(), oldMetric);
+                                    } else {
+                                        newMetric.add(oldMetric);
+                                    }
                                 }
                             }
                         }

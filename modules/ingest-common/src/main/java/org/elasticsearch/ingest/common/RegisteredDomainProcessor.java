@@ -46,7 +46,7 @@ public class RegisteredDomainProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         DomainInfo info = getRegisteredDomain(ingestDocument);
         if (info == null) {
             if (ignoreMissing) {

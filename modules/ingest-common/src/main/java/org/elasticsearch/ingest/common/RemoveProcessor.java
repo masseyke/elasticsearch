@@ -47,7 +47,7 @@ public final class RemoveProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument document) {
+    public IngestDocument execute(IngestDocument document, String context) {
         if (fieldsToKeep.isEmpty() == false) {
             fieldsToKeepProcessor(document);
         } else {

@@ -181,7 +181,7 @@ public final class ConvertProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument document) {
+    public IngestDocument execute(IngestDocument document, String context) {
         Object oldValue = document.getFieldValue(field, Object.class, ignoreMissing);
         Object newValue;
 

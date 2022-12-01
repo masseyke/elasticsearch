@@ -33,7 +33,7 @@ public interface Processor {
      * Introspect and potentially modify the incoming data.
      *
      * Expert method: only override this method if a processor implementation needs to make an asynchronous call,
-     * otherwise just overwrite {@link #execute(IngestDocument)}.
+     * otherwise just overwrite {@link #execute(IngestDocument, String)}.
      */
     default void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
         if (isAsync() == false) {

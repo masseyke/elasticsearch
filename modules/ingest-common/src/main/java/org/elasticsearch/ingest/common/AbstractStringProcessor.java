@@ -48,7 +48,7 @@ abstract class AbstractStringProcessor<T> extends AbstractProcessor {
     }
 
     @Override
-    public final IngestDocument execute(IngestDocument document) {
+    public final IngestDocument execute(IngestDocument document, String context) {
         Object val = document.getFieldValue(field, Object.class, ignoreMissing);
         Object newValue;
 

@@ -74,7 +74,7 @@ public final class SetSecurityUserProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         Authentication authentication = null;
         User user = null;
         if (this.securityContext != null) {

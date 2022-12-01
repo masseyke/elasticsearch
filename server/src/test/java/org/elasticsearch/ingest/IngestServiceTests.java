@@ -1165,7 +1165,7 @@ public class IngestServiceTests extends ESTestCase {
             }
 
             @SuppressWarnings("unchecked")
-            BiConsumer<IngestDocument, Exception> handler = (BiConsumer<IngestDocument, Exception>) invocationOnMock.getArguments()[1];
+            BiConsumer<IngestDocument, Exception> handler = (BiConsumer<IngestDocument, Exception>) invocationOnMock.getArguments()[2];
             handler.accept(ingestDocument, null);
             return null;
         }).when(processor).execute(any(), any(), any(BiConsumer.class));
@@ -1385,7 +1385,7 @@ public class IngestServiceTests extends ESTestCase {
         Exception error = new RuntimeException();
         doAnswer(args -> {
             @SuppressWarnings("unchecked")
-            BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
+            BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[2];
             handler.accept(null, error);
             return null;
         }).when(processor).execute(any(), any(), any(BiConsumer.class));
@@ -1491,13 +1491,13 @@ public class IngestServiceTests extends ESTestCase {
         // avoid returning null and dropping the document
         doAnswer(args -> {
             @SuppressWarnings("unchecked")
-            BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
+            BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[2];
             handler.accept(RandomDocumentPicks.randomIngestDocument(random()), null);
             return null;
         }).when(processor).execute(any(IngestDocument.class), any(), any(BiConsumer.class));
         doAnswer(args -> {
             @SuppressWarnings("unchecked")
-            BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
+            BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[2];
             handler.accept(null, new RuntimeException("error"));
             return null;
         }).when(processorFailure).execute(any(IngestDocument.class), any(), any(BiConsumer.class));
@@ -2228,7 +2228,7 @@ public class IngestServiceTests extends ESTestCase {
         doAnswer(args -> true).when(processor).isAsync();
         doAnswer(args -> {
             @SuppressWarnings("unchecked")
-            BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[1];
+            BiConsumer<IngestDocument, Exception> handler = (BiConsumer) args.getArguments()[2];
             handler.accept((IngestDocument) args.getArguments()[0], null);
             return null;
         }).when(processor).execute(any(), any(), any(BiConsumer.class));

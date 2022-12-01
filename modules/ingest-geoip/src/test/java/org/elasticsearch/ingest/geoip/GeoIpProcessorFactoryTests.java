@@ -314,7 +314,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
 
         // these are lazy loaded until first use so we expect null here
         assertNull(databaseNodeService.getDatabase("GeoLite2-City.mmdb").databaseReader.get());
-        city.execute(document);
+        city.execute(document, randomAlphaOfLength(5));
         // the first ingest should trigger a database load
         assertNotNull(databaseNodeService.getDatabase("GeoLite2-City.mmdb").databaseReader.get());
 
@@ -325,7 +325,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
 
         // these are lazy loaded until first use so we expect null here
         assertNull(databaseNodeService.getDatabase("GeoLite2-Country.mmdb").databaseReader.get());
-        country.execute(document);
+        country.execute(document, randomAlphaOfLength(5));
         // the first ingest should trigger a database load
         assertNotNull(databaseNodeService.getDatabase("GeoLite2-Country.mmdb").databaseReader.get());
 
@@ -336,7 +336,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
 
         // these are lazy loaded until first use so we expect null here
         assertNull(databaseNodeService.getDatabase("GeoLite2-ASN.mmdb").databaseReader.get());
-        asn.execute(document);
+        asn.execute(document, randomAlphaOfLength(5));
         // the first ingest should trigger a database load
         assertNotNull(databaseNodeService.getDatabase("GeoLite2-ASN.mmdb").databaseReader.get());
     }
@@ -377,7 +377,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
 
         // these are lazy loaded until first use so we expect null here
         assertNull(databaseNodeService.getDatabase("GeoIP2-City.mmdb").databaseReader.get());
-        city.execute(document);
+        city.execute(document, randomAlphaOfLength(5));
         // the first ingest should trigger a database load
         assertNotNull(databaseNodeService.getDatabase("GeoIP2-City.mmdb").databaseReader.get());
         resourceWatcherService.close();
@@ -410,7 +410,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
 
         GeoIpProcessor processor = (GeoIpProcessor) factory.create(null, processorTag, null, config);
 
-        processor.execute(RandomDocumentPicks.randomIngestDocument(random(), Map.of("_field", "89.160.20.128")));
+        processor.execute(RandomDocumentPicks.randomIngestDocument(random(), Map.of("_field", "89.160.20.128")), randomAlphaOfLength(5));
     }
 
     public void testUpdateDatabaseWhileIngesting() throws Exception {
@@ -422,7 +422,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
         document.put("source_field", "89.160.20.128");
         {
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-            processor.execute(ingestDocument);
+            processor.execute(ingestDocument, randomAlphaOfLength(5));
             Map<?, ?> geoData = (Map<?, ?>) ingestDocument.getSourceAndMetadata().get("geoip");
             assertThat(geoData.get("city_name"), equalTo("Tumba"));
         }
@@ -430,7 +430,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
             copyDatabaseFile(geoipTmpDir, "GeoLite2-City-Test.mmdb");
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
             databaseNodeService.updateDatabase("GeoLite2-City.mmdb", "md5", geoipTmpDir.resolve("GeoLite2-City-Test.mmdb"));
-            processor.execute(ingestDocument);
+            processor.execute(ingestDocument, randomAlphaOfLength(5));
             Map<?, ?> geoData = (Map<?, ?>) ingestDocument.getSourceAndMetadata().get("geoip");
             assertThat(geoData.get("city_name"), equalTo("Linköping"));
         }
@@ -439,7 +439,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
             databaseNodeService.removeStaleEntries(List.of("GeoLite2-City.mmdb"));
             configDatabases.updateDatabase(geoIpConfigDir.resolve("GeoLite2-City.mmdb"), false);
-            processor.execute(ingestDocument);
+            processor.execute(ingestDocument, randomAlphaOfLength(5));
             Map<?, ?> geoData = (Map<?, ?>) ingestDocument.getSourceAndMetadata().get("geoip");
             assertThat(geoData, nullValue());
         }
@@ -447,7 +447,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
             // There are database available, but not the right one, so tag:
             databaseNodeService.updateDatabase("GeoLite2-City-Test.mmdb", "md5", geoipTmpDir.resolve("GeoLite2-City-Test.mmdb"));
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-            processor.execute(ingestDocument);
+            processor.execute(ingestDocument, randomAlphaOfLength(5));
             assertThat(ingestDocument.getSourceAndMetadata(), hasEntry("tags", List.of("_geoip_database_unavailable_GeoLite2-City.mmdb")));
         }
     }
@@ -471,7 +471,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
                 null,
                 config
             );
-            processor.execute(ingestDocument);
+            processor.execute(ingestDocument, randomAlphaOfLength(5));
             assertThat(ingestDocument.getSourceAndMetadata().get("geoip"), nullValue());
             assertThat(
                 ingestDocument.getSourceAndMetadata().get("tags"),
@@ -492,7 +492,7 @@ public class GeoIpProcessorFactoryTests extends ESTestCase {
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
 
             GeoIpProcessor processor = (GeoIpProcessor) factory.create(null, null, null, config);
-            processor.execute(ingestDocument);
+            processor.execute(ingestDocument, randomAlphaOfLength(5));
             assertThat(ingestDocument.getSourceAndMetadata().get("tags"), nullValue());
             Map<?, ?> geoData = (Map<?, ?>) ingestDocument.getSourceAndMetadata().get("geoip");
             assertThat(geoData.get("city_name"), equalTo("Linköping"));

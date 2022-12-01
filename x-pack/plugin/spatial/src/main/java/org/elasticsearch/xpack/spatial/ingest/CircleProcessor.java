@@ -62,7 +62,7 @@ public final class CircleProcessor extends AbstractProcessor {
 
     @Override
     @SuppressWarnings("unchecked")
-    public IngestDocument execute(IngestDocument ingestDocument) {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) {
         Object obj = ingestDocument.getFieldValue(field, Object.class, ignoreMissing);
 
         if (obj == null && ignoreMissing) {

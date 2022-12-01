@@ -84,50 +84,29 @@ public class IngestStatsTests extends ESTestCase {
         Map<String, List<IngestStats.ProcessorStat>> processorStats = Map.of(
             "outerPipeline",
             outerPipelineProcessors,
-            "innerPipeline",
+            "outerPipeline:innerPipeline",
             innerPipelineProcessors
         );
         IngestStats ingestStats = new IngestStats(totalStats, List.of(pipeline1Stats, pipeline2Stats), processorStats);
-        {
-            Map<String, Object> ingestStatsMap = xContentToMap(ingestStats, RestApiVersion.current());
-            assertThat(ingestStatsMap.size(), equalTo(1));
-            Map<String, Object> ingest = (Map<String, Object>) ingestStatsMap.get("ingest");
-            assertThat(ingest.size(), equalTo(2));
-            Map<String, Object> topLevelPipelines = (Map<String, Object>) ingest.get("pipelines");
-            assertThat(topLevelPipelines.size(), equalTo(1));
-            Map<String, Object> outerPipeline = (Map<String, Object>) topLevelPipelines.get("outerPipeline");
-            assertThat(outerPipeline.size(), equalTo(5));
-            List<Map<String, Object>> outerPipelineProcessorsList = (List<Map<String, Object>>) outerPipeline.get("processors");
-            assertThat(outerPipelineProcessorsList.size(), equalTo(outerPipelineProcessors.size()));
-            Map<String, Object> innerPipelineProcessor = outerPipelineProcessorsList.get(2);
-            assertThat(innerPipelineProcessor.size(), equalTo(1));
-            Map<String, Object> innerPipeline = (Map<String, Object>) innerPipelineProcessor.get("pipeline:innerPipeline");
-            assertNotNull(innerPipeline);
-            assertThat(innerPipeline.size(), equalTo(3));
-            List<Map<String, Object>> innerPipelineProcessorsList = (List<Map<String, Object>>) innerPipeline.get("processors");
-            assertThat(innerPipelineProcessorsList.size(), equalTo(4));
-        }
-        {
-            Map<String, Object> ingestStatsMap = xContentToMap(ingestStats, RestApiVersion.V_7);
-            assertThat(ingestStatsMap.size(), equalTo(1));
-            Map<String, Object> ingest = (Map<String, Object>) ingestStatsMap.get("ingest");
-            assertThat(ingest.size(), equalTo(2));
-            Map<String, Object> topLevelPipelines = (Map<String, Object>) ingest.get("pipelines");
-            assertThat(topLevelPipelines.size(), equalTo(2));
-            Map<String, Object> outerPipeline = (Map<String, Object>) topLevelPipelines.get("outerPipeline");
-            assertThat(outerPipeline.size(), equalTo(5));
-            List<Map<String, Object>> outerPipelineProcessorsList = (List<Map<String, Object>>) outerPipeline.get("processors");
-            assertThat(outerPipelineProcessorsList.size(), equalTo(outerPipelineProcessors.size()));
-            Map<String, Object> innerPipelineProcessor = outerPipelineProcessorsList.get(2);
-            assertThat(innerPipelineProcessor.size(), equalTo(1));
-            Map<String, Object> innerPipelinePlaceholder = (Map<String, Object>) innerPipelineProcessor.get("pipeline:innerPipeline");
-            assertNotNull(innerPipelinePlaceholder);
-            Map<String, Object> innerPipeline = (Map<String, Object>) topLevelPipelines.get("innerPipeline");
-            assertNotNull(innerPipeline);
-            assertThat(innerPipeline.size(), equalTo(5));
-            List<Map<String, Object>> innerPipelineProcessorsList = (List<Map<String, Object>>) innerPipeline.get("processors");
-            assertThat(innerPipelineProcessorsList.size(), equalTo(4));
-        }
+        Map<String, Object> ingestStatsMap = xContentToMap(ingestStats, RestApiVersion.current());
+        assertThat(ingestStatsMap.size(), equalTo(1));
+        Map<String, Object> ingest = (Map<String, Object>) ingestStatsMap.get("ingest");
+        assertThat(ingest.size(), equalTo(2));
+        Map<String, Object> topLevelPipelines = (Map<String, Object>) ingest.get("pipelines");
+        assertThat(topLevelPipelines.size(), equalTo(2));
+        Map<String, Object> outerPipeline = (Map<String, Object>) topLevelPipelines.get("outerPipeline");
+        assertThat(outerPipeline.size(), equalTo(5));
+        List<Map<String, Object>> outerPipelineProcessorsList = (List<Map<String, Object>>) outerPipeline.get("processors");
+        assertThat(outerPipelineProcessorsList.size(), equalTo(outerPipelineProcessors.size()));
+        Map<String, Object> innerPipelineProcessor = outerPipelineProcessorsList.get(2);
+        assertThat(innerPipelineProcessor.size(), equalTo(1));
+        Map<String, Object> innerPipeline = (Map<String, Object>) innerPipelineProcessor.get("pipeline:innerPipeline");
+        assertNotNull(innerPipeline);
+        assertThat(innerPipeline.size(), equalTo(2));
+        List<Map<String, Object>> innerPipelineProcessorsList = (List<Map<String, Object>>) ((Map<String, Object>) innerPipeline.get(
+            "stats"
+        )).get("processors");
+        assertThat(innerPipelineProcessorsList.size(), equalTo(4));
     }
 
     private Map<String, Object> xContentToMap(ToXContent xcontent, RestApiVersion restApiVersion) throws IOException {

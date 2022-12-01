@@ -55,7 +55,7 @@ public class UriPartsProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         String value = ingestDocument.getFieldValue(field, String.class);
 
         var uriParts = apply(value);

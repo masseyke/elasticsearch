@@ -69,7 +69,7 @@ public final class ScriptProcessor extends AbstractProcessor {
      * @param document The Ingest document passed into the script context under the "ctx" object.
      */
     @Override
-    public IngestDocument execute(IngestDocument document) {
+    public IngestDocument execute(IngestDocument document, String context) {
         document.doNoSelfReferencesCheck(true);
         IngestScript.Factory factory = precompiledIngestScriptFactory;
         if (factory == null) {

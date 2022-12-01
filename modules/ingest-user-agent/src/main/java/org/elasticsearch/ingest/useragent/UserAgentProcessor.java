@@ -70,7 +70,7 @@ public class UserAgentProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) {
         String userAgent = ingestDocument.getFieldValue(field, String.class, ignoreMissing);
 
         if (userAgent == null && ignoreMissing) {

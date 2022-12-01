@@ -37,7 +37,7 @@ public final class FailProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument document) {
+    public IngestDocument execute(IngestDocument document, String context) {
         throw new FailProcessorException(document.renderTemplate(message));
     }
 

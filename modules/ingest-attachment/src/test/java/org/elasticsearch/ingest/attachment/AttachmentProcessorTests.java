@@ -323,7 +323,7 @@ public class AttachmentProcessorTests extends ESTestCase {
         document.put("source_field", bytes);
 
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> attachmentData = (Map<String, Object>) ingestDocument.getSourceAndMetadata().get("target_field");
@@ -353,7 +353,7 @@ public class AttachmentProcessorTests extends ESTestCase {
             null,
             false
         );
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
         assertIngestDocument(originalIngestDocument, ingestDocument);
     }
 
@@ -372,7 +372,7 @@ public class AttachmentProcessorTests extends ESTestCase {
             null,
             false
         );
-        processor.execute(ingestDocument);
+        processor.execute(ingestDocument, randomAlphaOfLength(5));
         assertIngestDocument(originalIngestDocument, ingestDocument);
     }
 
@@ -394,7 +394,7 @@ public class AttachmentProcessorTests extends ESTestCase {
             null,
             false
         );
-        Exception exception = expectThrows(Exception.class, () -> processor.execute(ingestDocument));
+        Exception exception = expectThrows(Exception.class, () -> processor.execute(ingestDocument, randomAlphaOfLength(5)));
         assertThat(exception.getMessage(), equalTo("field [source_field] is null, cannot parse."));
     }
 
@@ -413,7 +413,7 @@ public class AttachmentProcessorTests extends ESTestCase {
             null,
             false
         );
-        Exception exception = expectThrows(Exception.class, () -> processor.execute(ingestDocument));
+        Exception exception = expectThrows(Exception.class, () -> processor.execute(ingestDocument, randomAlphaOfLength(5)));
         assertThat(exception.getMessage(), equalTo("field [source_field] not present as part of path [source_field]"));
     }
 
@@ -440,7 +440,7 @@ public class AttachmentProcessorTests extends ESTestCase {
         document.putAll(optionalFields);
 
         IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-        attachmentProcessor.execute(ingestDocument);
+        attachmentProcessor.execute(ingestDocument, randomAlphaOfLength(5));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> attachmentData = (Map<String, Object>) ingestDocument.getSourceAndMetadata().get("target_field");
@@ -558,7 +558,7 @@ public class AttachmentProcessorTests extends ESTestCase {
             Map<String, Object> document = new HashMap<>();
             document.put("source_field", getAsBinaryOrBase64("text-in-english.txt"));
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-            processor.execute(ingestDocument);
+            processor.execute(ingestDocument, randomAlphaOfLength(5));
             assertThat(ingestDocument.hasField("source_field"), is(true));
         }
         {
@@ -578,7 +578,7 @@ public class AttachmentProcessorTests extends ESTestCase {
             Map<String, Object> document = new HashMap<>();
             document.put("source_field", getAsBinaryOrBase64("text-in-english.txt"));
             IngestDocument ingestDocument = RandomDocumentPicks.randomIngestDocument(random(), document);
-            processor.execute(ingestDocument);
+            processor.execute(ingestDocument, randomAlphaOfLength(5));
             assertThat(ingestDocument.hasField("source_field"), is(false));
         }
     }

@@ -113,7 +113,7 @@ public final class GeoIpProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) throws IOException {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws IOException {
         Object ip = ingestDocument.getFieldValue(field, Object.class, ignoreMissing);
 
         if (isValid.get() == false) {
@@ -588,7 +588,7 @@ public final class GeoIpProcessor extends AbstractProcessor {
         }
 
         @Override
-        public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+        public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
             tag(ingestDocument, databaseName);
             return ingestDocument;
         }

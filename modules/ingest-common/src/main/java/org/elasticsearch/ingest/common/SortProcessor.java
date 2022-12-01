@@ -83,7 +83,7 @@ public final class SortProcessor extends AbstractProcessor {
 
     @Override
     @SuppressWarnings("unchecked")
-    public IngestDocument execute(IngestDocument document) {
+    public IngestDocument execute(IngestDocument document, String context) {
         List<? extends Comparable<Object>> list = document.getFieldValue(field, List.class);
 
         if (list == null) {

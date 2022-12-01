@@ -66,7 +66,7 @@ public final class CsvProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument ingestDocument) {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) {
         if (headers.length == 0) {
             return ingestDocument;
         }

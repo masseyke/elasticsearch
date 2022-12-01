@@ -71,7 +71,7 @@ public final class FingerprintProcessor extends AbstractProcessor {
 
     @Override
     @SuppressWarnings("unchecked")
-    public IngestDocument execute(IngestDocument ingestDocument) throws Exception {
+    public IngestDocument execute(IngestDocument ingestDocument, String context) throws Exception {
         Hasher hasher = threadLocalHasher.get();
         hasher.reset();
         hasher.update(salt);

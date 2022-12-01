@@ -71,7 +71,7 @@ public final class SplitProcessor extends AbstractProcessor {
     }
 
     @Override
-    public IngestDocument execute(IngestDocument document) {
+    public IngestDocument execute(IngestDocument document, String context) {
         String oldVal = document.getFieldValue(field, String.class, ignoreMissing);
 
         if (oldVal == null && ignoreMissing) {

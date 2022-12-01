@@ -118,7 +118,7 @@ public class InferenceProcessor extends AbstractProcessor {
     }
 
     @Override
-    public void execute(IngestDocument ingestDocument, BiConsumer<IngestDocument, Exception> handler) {
+    public void execute(IngestDocument ingestDocument, String context, BiConsumer<IngestDocument, Exception> handler) {
         executeAsyncWithOrigin(
             client,
             ML_ORIGIN,
