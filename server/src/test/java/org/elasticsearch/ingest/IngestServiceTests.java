@@ -2097,8 +2097,8 @@ public class IngestServiceTests extends ESTestCase {
         }
 
         /*
-         * UpdateRequest for originalRequest with an index name that is different from the one in indexRequest, should pick up the default
-         * pipeline and final pipeline from the indexRequest's metadata because indexRequest takes priority
+         * UpdateRequest for originalRequest with an index name not in the IndexMetadata, timestamped index in indexRequest with an
+         * index name that is in the IndexMetadata, should pick up the default pipeline and final pipeline from the indexRequest's metadata
          */
         {
             long epochMillis = System.currentTimeMillis();
@@ -2155,6 +2155,10 @@ public class IngestServiceTests extends ESTestCase {
             assertThat(indexRequest.getFinalPipeline(), equalTo("default-pipeline"));
         }
 
+        /*
+         * UpdateRequest for originalRequest with an index name that is different from the one in indexRequest, should pick up the default
+         * pipeline and final pipeline from the indexRequest's metadata because indexRequest takes priority
+         */
         {
             String updateRequestIndexName = "other-index";
             long epochMillis = System.currentTimeMillis();
@@ -2169,6 +2173,43 @@ public class IngestServiceTests extends ESTestCase {
                 .numberOfShards(1)
                 .numberOfReplicas(0);
             IndexMetadata.Builder updateIndexBuilder = IndexMetadata.builder(updateRequestIndexName)
+                .settings(
+                    settings(Version.CURRENT).put(IndexSettings.DEFAULT_PIPELINE.getKey(), "update-default-pipeline")
+                        .put(IndexSettings.FINAL_PIPELINE.getKey(), "update-default-pipeline")
+                )
+                .numberOfShards(1)
+                .numberOfReplicas(0);
+            Metadata metadata = Metadata.builder().put(indexBuilder).put(updateIndexBuilder).build();
+            UpdateRequest updateRequest = new UpdateRequest();
+            updateRequest.index(updateRequestIndexName);
+            IndexRequest indexRequest = new IndexRequest(indexName);
+            boolean result = IngestService.resolvePipelines(updateRequest, indexRequest, metadata);
+            assertThat(result, is(true));
+            assertThat(indexRequest.isPipelineResolved(), is(true));
+            assertThat(indexRequest.getPipeline(), equalTo("default-pipeline"));
+            assertThat(indexRequest.getFinalPipeline(), equalTo("default-pipeline"));
+        }
+
+        /*
+         * UpdateRequest for originalRequest with an index name that is different from the one in indexRequest, should pick up the default
+         * pipeline and final pipeline from the indexRequest's metadata because indexRequest takes priority
+         */
+        {
+            String updateRequestIndexName = "<other-index-{now/d}>";
+            long epochMillis = System.currentTimeMillis();
+            String indexName = "<some-index-{now/d}>";
+            IndexMetadata.Builder indexBuilder = IndexMetadata.builder(
+                IndexNameExpressionResolver.resolveDateMathExpression(indexName, epochMillis)
+            )
+                .settings(
+                    settings(Version.CURRENT).put(IndexSettings.DEFAULT_PIPELINE.getKey(), "default-pipeline")
+                        .put(IndexSettings.FINAL_PIPELINE.getKey(), "default-pipeline")
+                )
+                .numberOfShards(1)
+                .numberOfReplicas(0);
+            IndexMetadata.Builder updateIndexBuilder = IndexMetadata.builder(
+                IndexNameExpressionResolver.resolveDateMathExpression(updateRequestIndexName, epochMillis)
+            )
                 .settings(
                     settings(Version.CURRENT).put(IndexSettings.DEFAULT_PIPELINE.getKey(), "update-default-pipeline")
                         .put(IndexSettings.FINAL_PIPELINE.getKey(), "update-default-pipeline")
