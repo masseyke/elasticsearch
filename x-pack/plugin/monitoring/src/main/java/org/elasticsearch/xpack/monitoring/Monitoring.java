@@ -27,6 +27,7 @@ import org.elasticsearch.license.LicenseService;
 import org.elasticsearch.license.LicensedFeature;
 import org.elasticsearch.license.XPackLicenseState;
 import org.elasticsearch.plugins.ActionPlugin;
+import org.elasticsearch.plugins.ClusterPlugin;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.ReloadablePlugin;
 import org.elasticsearch.repositories.RepositoriesService;
@@ -79,7 +80,7 @@ import java.util.function.UnaryOperator;
 
 import static org.elasticsearch.common.settings.Setting.boolSetting;
 
-public class Monitoring extends Plugin implements ActionPlugin, ReloadablePlugin {
+public class Monitoring extends Plugin implements ActionPlugin, ReloadablePlugin, ClusterPlugin {
 
     public static final Setting<Boolean> MIGRATION_DECOMMISSION_ALERTS = boolSetting(
         "xpack.monitoring.migration.decommission_alerts",
@@ -98,6 +99,8 @@ public class Monitoring extends Plugin implements ActionPlugin, ReloadablePlugin
     protected final Settings settings;
 
     private Exporters exporters;
+
+    private CleanerService cleanerService;
 
     public Monitoring(Settings settings) {
         this.settings = settings;
@@ -133,7 +136,7 @@ public class Monitoring extends Plugin implements ActionPlugin, ReloadablePlugin
         AllocationService allocationService
     ) {
         final ClusterSettings clusterSettings = clusterService.getClusterSettings();
-        final CleanerService cleanerService = new CleanerService(settings, clusterSettings, threadPool, getLicenseState());
+        this.cleanerService = new CleanerService(settings, clusterSettings, threadPool, getLicenseState());
         final SSLService dynamicSSLService = getSslService().createDynamicSSLService();
         final MonitoringMigrationCoordinator migrationCoordinator = new MonitoringMigrationCoordinator();
 
@@ -256,5 +259,10 @@ public class Monitoring extends Plugin implements ActionPlugin, ReloadablePlugin
             return map;
         };
 
+    }
+
+    @Override
+    public void onNodeStarted() {
+        cleanerService.scheduleIndicesCleaner();
     }
 }

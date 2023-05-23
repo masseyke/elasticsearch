@@ -62,9 +62,20 @@ public class CleanerService extends AbstractLifecycleComponent {
 
     @Override
     protected void doStart() {
+        /*
+         * The cluster service has not been started yet when plugin components are started. So we cannot schedule the cleaner here
+         * because it might run before the cluster state is available.
+         */
         logger.debug("starting cleaning service");
+    }
+
+    /**
+     * This schedules the cleaner to run on this object's executionScheduler. The cleaner depends on the cluster state, so this method
+     * cannot be called until the cluster service has been fully started.
+     */
+    public void scheduleIndicesCleaner() {
+        logger.debug("scheduling indices cleaner");
         threadPool.schedule(runnable, executionScheduler.nextExecutionDelay(ZonedDateTime.now(Clock.systemDefaultZone())), executorName());
-        logger.debug("cleaning service started");
     }
 
     @Override
