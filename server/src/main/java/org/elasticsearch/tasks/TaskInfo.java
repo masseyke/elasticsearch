@@ -97,7 +97,11 @@ public record TaskInfo(
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.field("node", taskId.getNodeId());
+        if (params.paramAsBoolean("show_node_info", true)) {
+            builder.field("node", taskId.getNodeId());
+        } else {
+            builder.field("node", "N/A");
+        }
         builder.field("id", taskId.getId());
         builder.field("type", type);
         builder.field("action", action);
@@ -120,7 +124,7 @@ public record TaskInfo(
             builder.field("cancelled", cancelled);
         }
         if (parentTaskId.isSet()) {
-            builder.field("parent_task_id", parentTaskId.toString());
+            builder.field("parent_task_id", parentTaskId.toString(params.paramAsBoolean("show_node_info", true)));
         }
         builder.startObject("headers");
         for (Map.Entry<String, String> attribute : headers.entrySet()) {

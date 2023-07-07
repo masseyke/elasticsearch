@@ -109,13 +109,21 @@ public final class TaskId implements Writeable {
         return id != -1L;
     }
 
-    @Override
-    public String toString() {
+    public String toString(boolean includeNodeId) {
         if (isSet()) {
-            return nodeId + ":" + id;
+            if (includeNodeId) {
+                return nodeId + ":" + id;
+            } else {
+                return "N/A:" + id;
+            }
         } else {
             return "unset";
         }
+    }
+
+    @Override
+    public String toString() {
+        return toString(true);
     }
 
     @Override

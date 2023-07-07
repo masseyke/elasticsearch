@@ -19,6 +19,7 @@ import org.elasticsearch.tasks.TaskId;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 
 import static org.elasticsearch.rest.RestRequest.Method.GET;
 import static org.elasticsearch.rest.Scope.PUBLIC;
@@ -47,5 +48,10 @@ public class RestGetTaskAction extends BaseRestHandler {
         getTaskRequest.setWaitForCompletion(waitForCompletion);
         getTaskRequest.setTimeout(timeout);
         return channel -> client.admin().cluster().getTask(getTaskRequest, new RestToXContentListener<>(channel));
+    }
+
+    @Override
+    protected Set<String> responseParams() {
+        return Set.of("show_node_info");
     }
 }
