@@ -36,7 +36,6 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 import static java.util.Collections.emptySet;
-import static java.util.stream.Collectors.toList;
 import static org.elasticsearch.action.support.IndicesOptions.lenientExpandOpen;
 import static org.elasticsearch.cluster.metadata.IndexMetadata.SETTING_BLOCKS_WRITE;
 import static org.elasticsearch.cluster.metadata.IndexMetadata.SETTING_READ_ONLY;
@@ -127,6 +126,7 @@ public class SimpleBlocksIT extends ESIntegTestCase {
             IndexRequestBuilder builder = prepareIndex(index);
             builder.setSource("foo", "bar");
             DocWriteResponse r = builder.get();
+            builder.request().decRef();
             assertThat(r, notNullValue());
         } catch (ClusterBlockException e) {
             fail();
@@ -134,13 +134,15 @@ public class SimpleBlocksIT extends ESIntegTestCase {
     }
 
     private void canNotIndexDocument(String index) {
+        IndexRequestBuilder builder = prepareIndex(index);
         try {
-            IndexRequestBuilder builder = prepareIndex(index);
             builder.setSource("foo", "bar");
             builder.get();
             fail();
         } catch (ClusterBlockException e) {
             // all is well
+        } finally {
+            builder.request().decRef();
         }
     }
 
@@ -244,12 +246,13 @@ public class SimpleBlocksIT extends ESIntegTestCase {
         ensureGreen(indexName);
 
         final int nbDocs = randomIntBetween(0, 50);
-        indexRandom(
-            randomBoolean(),
-            false,
-            randomBoolean(),
-            IntStream.range(0, nbDocs).mapToObj(i -> prepareIndex(indexName).setId(String.valueOf(i)).setSource("num", i)).collect(toList())
-        );
+        List<IndexRequestBuilder> builders = IntStream.range(0, nbDocs)
+            .mapToObj(i -> prepareIndex(indexName).setId(String.valueOf(i)).setSource("num", i))
+            .toList();
+        indexRandom(randomBoolean(), false, randomBoolean(), builders);
+        for (IndexRequestBuilder builder : builders) {
+            builder.request().decRef();
+        }
 
         final APIBlock block = randomAddableBlock();
         try {
@@ -269,14 +272,13 @@ public class SimpleBlocksIT extends ESIntegTestCase {
         createIndex(indexName);
 
         if (randomBoolean()) {
-            indexRandom(
-                randomBoolean(),
-                false,
-                randomBoolean(),
-                IntStream.range(0, randomIntBetween(1, 10))
-                    .mapToObj(i -> prepareIndex(indexName).setId(String.valueOf(i)).setSource("num", i))
-                    .collect(toList())
-            );
+            List<IndexRequestBuilder> builders = IntStream.range(0, randomIntBetween(1, 10))
+                .mapToObj(i -> prepareIndex(indexName).setId(String.valueOf(i)).setSource("num", i))
+                .toList();
+            indexRandom(randomBoolean(), false, randomBoolean(), builders);
+            for (IndexRequestBuilder builder : builders) {
+                builder.request().decRef();
+            }
         }
         final APIBlock block = randomAddableBlock();
         try {
@@ -315,12 +317,14 @@ public class SimpleBlocksIT extends ESIntegTestCase {
         createIndex(indexName);
 
         final int nbDocs = randomIntBetween(10, 50);
-        indexRandom(
-            randomBoolean(),
-            false,
-            randomBoolean(),
-            IntStream.range(0, nbDocs).mapToObj(i -> prepareIndex(indexName).setId(String.valueOf(i)).setSource("num", i)).collect(toList())
-        );
+        List<IndexRequestBuilder> builders = IntStream.range(0, nbDocs)
+            .mapToObj(i -> prepareIndex(indexName).setId(String.valueOf(i)).setSource("num", i))
+            .toList();
+        indexRandom(randomBoolean(), false, randomBoolean(), builders);
+        for (IndexRequestBuilder builder : builders) {
+            builder.request().decRef();
+        }
+
         ensureYellowAndNoInitializingShards(indexName);
 
         final CountDownLatch startClosing = new CountDownLatch(1);
@@ -393,14 +397,13 @@ public class SimpleBlocksIT extends ESIntegTestCase {
             final String indexName = randomAlphaOfLength(10).toLowerCase(Locale.ROOT);
             createIndex(indexName);
             if (randomBoolean()) {
-                indexRandom(
-                    randomBoolean(),
-                    false,
-                    randomBoolean(),
-                    IntStream.range(0, 10)
-                        .mapToObj(n -> prepareIndex(indexName).setId(String.valueOf(n)).setSource("num", n))
-                        .collect(toList())
-                );
+                List<IndexRequestBuilder> builders = IntStream.range(0, 10)
+                    .mapToObj(n -> prepareIndex(indexName).setId(String.valueOf(n)).setSource("num", n))
+                    .toList();
+                indexRandom(randomBoolean(), false, randomBoolean(), builders);
+                for (IndexRequestBuilder builder : builders) {
+                    builder.request().decRef();
+                }
             }
             indices[i] = indexName;
         }

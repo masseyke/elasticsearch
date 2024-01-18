@@ -162,7 +162,7 @@ public class CorruptedFileIT extends ESIntegTestCase {
         for (int i = 0; i < builders.length; i++) {
             builders[i] = prepareIndex("test").setSource("field", "value");
         }
-        indexRandom(true, builders);
+        indexRandomAndDecrefRequests(true, builders);
         ensureGreen();
         // double flush to create safe commit in case of async durability
         assertAllSuccessful(indicesAdmin().prepareFlush().setForce(true).get());
@@ -269,7 +269,7 @@ public class CorruptedFileIT extends ESIntegTestCase {
         for (int i = 0; i < builders.length; i++) {
             builders[i] = prepareIndex("test").setSource("field", "value");
         }
-        indexRandom(true, builders);
+        indexRandomAndDecrefRequests(true, builders);
         ensureGreen();
         // double flush to create safe commit in case of async durability
         assertAllSuccessful(indicesAdmin().prepareFlush().setForce(true).get());
@@ -398,7 +398,7 @@ public class CorruptedFileIT extends ESIntegTestCase {
         for (int i = 0; i < builders.length; i++) {
             builders[i] = prepareIndex("test").setSource("field", "value");
         }
-        indexRandom(true, builders);
+        indexRandomAndDecrefRequests(true, builders);
         ensureGreen();
         assertAllSuccessful(indicesAdmin().prepareFlush().setForce(true).get());
         // we have to flush at least once here since we don't corrupt the translog
@@ -537,7 +537,7 @@ public class CorruptedFileIT extends ESIntegTestCase {
         for (int i = 0; i < builders.length; i++) {
             builders[i] = prepareIndex("test").setSource("field", "value");
         }
-        indexRandom(true, builders);
+        indexRandomAndDecrefRequests(true, builders);
         ensureGreen();
         assertAllSuccessful(indicesAdmin().prepareFlush().setForce(true).get());
         // we have to flush at least once here since we don't corrupt the translog
@@ -604,7 +604,7 @@ public class CorruptedFileIT extends ESIntegTestCase {
         for (int i = 0; i < builders.length; i++) {
             builders[i] = prepareIndex("test").setSource("field", "value");
         }
-        indexRandom(true, builders);
+        indexRandomAndDecrefRequests(true, builders);
         ensureGreen();
         assertAllSuccessful(indicesAdmin().prepareFlush().setForce(true).get());
         // we have to flush at least once here since we don't corrupt the translog
@@ -761,5 +761,15 @@ public class CorruptedFileIT extends ESIntegTestCase {
                 Collections.shuffle(list, random());
                 return list;
             }));
+    }
+
+    private void indexRandomAndDecrefRequests(boolean forceRefresh, IndexRequestBuilder... builders) throws InterruptedException {
+        try {
+            indexRandom(forceRefresh, builders);
+        } finally {
+            for (IndexRequestBuilder builder : builders) {
+                builder.request().decRef();
+            }
+        }
     }
 }

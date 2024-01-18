@@ -10,6 +10,7 @@ package org.elasticsearch.gateway;
 
 import org.apache.lucene.index.IndexWriter;
 import org.elasticsearch.action.admin.indices.stats.ShardStats;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.cluster.routing.UnassignedInfo;
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.UUIDs;
@@ -41,6 +42,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -166,7 +168,7 @@ public class ReplicaShardAllocatorSyncIdIT extends ESIntegTestCase {
         String nodeWithReplica = internalCluster().startDataOnlyNode();
         Settings nodeWithReplicaSettings = internalCluster().dataPathSettings(nodeWithReplica);
         ensureGreen(indexName);
-        indexRandom(
+        indexRandomAndDecRefRequests(
             randomBoolean(),
             randomBoolean(),
             randomBoolean(),
@@ -223,7 +225,7 @@ public class ReplicaShardAllocatorSyncIdIT extends ESIntegTestCase {
                 )
         );
         ensureGreen(indexName);
-        indexRandom(
+        indexRandomAndDecRefRequests(
             randomBoolean(),
             randomBoolean(),
             randomBoolean(),
@@ -261,7 +263,7 @@ public class ReplicaShardAllocatorSyncIdIT extends ESIntegTestCase {
         createIndex(indexName, 1, 0);
         ensureGreen(indexName);
         if (randomBoolean()) {
-            indexRandom(
+            indexRandomAndDecRefRequests(
                 randomBoolean(),
                 randomBoolean(),
                 randomBoolean(),
@@ -322,5 +324,20 @@ public class ReplicaShardAllocatorSyncIdIT extends ESIntegTestCase {
                 }
             }
         });
+    }
+
+    private void indexRandomAndDecRefRequests(
+        boolean forceRefresh,
+        boolean dummyDocuments,
+        boolean maybeFlush,
+        List<IndexRequestBuilder> builders
+    ) throws InterruptedException {
+        try {
+            indexRandom(forceRefresh, dummyDocuments, maybeFlush, builders);
+        } finally {
+            for (IndexRequestBuilder builder : builders) {
+                builder.request().decRef();
+            }
+        }
     }
 }

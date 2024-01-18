@@ -13,6 +13,7 @@ import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.ClusterStateUpdateTask;
@@ -63,9 +64,9 @@ public class DynamicMappingIT extends ESIntegTestCase {
     public void testConflictingDynamicMappings() {
         // we don't use indexRandom because the order of requests is important here
         createIndex("index");
-        prepareIndex("index").setId("1").setSource("foo", 3).get();
+        indexDoc("index", "1", "foo", 3);
         try {
-            prepareIndex("index").setId("2").setSource("foo", "bar").get();
+            indexDoc("index", "2", "foo", "bar");
             fail("Indexing request should have failed!");
         } catch (DocumentParsingException e) {
             // general case, the parsing code complains that it can't parse "bar" as a "long"
@@ -81,13 +82,17 @@ public class DynamicMappingIT extends ESIntegTestCase {
     public void testConflictingDynamicMappingsBulk() {
         // we don't use indexRandom because the order of requests is important here
         createIndex("index");
-        prepareIndex("index").setId("1").setSource("foo", 3).get();
+        indexDoc("index", "1", "foo", 3);
         try (BulkRequestBuilder bulkRequestBuilder = client().prepareBulk()) {
-            BulkResponse bulkResponse = bulkRequestBuilder.add(prepareIndex("index").setId("1").setSource("foo", 3)).get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("index").setId("1").setSource("foo", 3);
+            BulkResponse bulkResponse = bulkRequestBuilder.add(indexRequestBuilder).get();
+            indexRequestBuilder.request().decRef();
             assertFalse(bulkResponse.hasFailures());
         }
         try (BulkRequestBuilder bulkRequestBuilder = client().prepareBulk()) {
-            BulkResponse bulkResponse = bulkRequestBuilder.add(prepareIndex("index").setId("2").setSource("foo", "bar")).get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("index").setId("2").setSource("foo", "bar");
+            BulkResponse bulkResponse = bulkRequestBuilder.add(indexRequestBuilder).get();
+            indexRequestBuilder.request().decRef();
             assertTrue(bulkResponse.hasFailures());
         }
     }
@@ -113,10 +118,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
                 public void run() {
                     try {
                         startLatch.await();
-                        assertEquals(
-                            DocWriteResponse.Result.CREATED,
-                            prepareIndex("index").setId(id).setSource("field" + id, "bar").get().getResult()
-                        );
+                        assertEquals(DocWriteResponse.Result.CREATED, indexDoc("index", id, "field" + id, "bar").getResult());
                     } catch (Exception e) {
                         error.compareAndSet(null, e);
                     }
@@ -166,7 +168,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
                 XContentType.JSON
             )
             .get();
-        prepareIndex("index").setId("1").setSource("nested1", Map.of("foo", "bar"), "nested2", Map.of("foo", "bar")).get();
+        indexDoc("index", "1", "nested1", Map.of("foo", "bar"), "nested2", Map.of("foo", "bar"));
 
         final CountDownLatch masterBlockedLatch = new CountDownLatch(1);
         final CountDownLatch indexingCompletedLatch = new CountDownLatch(1);
@@ -187,13 +189,14 @@ public class DynamicMappingIT extends ESIntegTestCase {
             });
 
         masterBlockedLatch.await();
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("index").setId("2");
         try {
             assertThat(
-                expectThrows(IllegalArgumentException.class, prepareIndex("index").setId("2").setSource("nested3", Map.of("foo", "bar")))
-                    .getMessage(),
+                expectThrows(IllegalArgumentException.class, indexRequestBuilder.setSource("nested3", Map.of("foo", "bar"))).getMessage(),
                 Matchers.containsString("Limit of nested fields [2] has been exceeded")
             );
         } finally {
+            indexRequestBuilder.request().decRef();
             indexingCompletedLatch.countDown();
         }
     }
@@ -201,7 +204,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
     public void testTotalFieldsLimitForDynamicMappingsUpdateCheckedAtDocumentParseTime() throws InterruptedException {
         createIndex("index", Settings.builder().put(INDEX_MAPPING_TOTAL_FIELDS_LIMIT_SETTING.getKey(), 2).build());
         ensureGreen("index");
-        prepareIndex("index").setId("1").setSource("field1", "value1").get();
+        indexDoc("index", "1", "field1", "value1");
 
         final CountDownLatch masterBlockedLatch = new CountDownLatch(1);
         final CountDownLatch indexingCompletedLatch = new CountDownLatch(1);
@@ -223,13 +226,18 @@ public class DynamicMappingIT extends ESIntegTestCase {
 
         masterBlockedLatch.await();
         try {
-            Exception e = expectThrows(DocumentParsingException.class, prepareIndex("index").setId("2").setSource("field2", "value2"));
-            assertThat(e.getMessage(), Matchers.containsString("failed to parse"));
-            assertThat(e.getCause(), instanceOf(IllegalArgumentException.class));
-            assertThat(
-                e.getCause().getMessage(),
-                Matchers.containsString("Limit of total fields [2] has been exceeded while adding new fields [1]")
-            );
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("index").setId("2");
+            try {
+                Exception e = expectThrows(DocumentParsingException.class, indexRequestBuilder.setSource("field2", "value2"));
+                assertThat(e.getMessage(), Matchers.containsString("failed to parse"));
+                assertThat(e.getCause(), instanceOf(IllegalArgumentException.class));
+                assertThat(
+                    e.getCause().getMessage(),
+                    Matchers.containsString("Limit of total fields [2] has been exceeded while adding new fields [1]")
+                );
+            } finally {
+                indexRequestBuilder.request().decRef();
+            }
         } finally {
             indexingCompletedLatch.countDown();
         }
@@ -265,11 +273,10 @@ public class DynamicMappingIT extends ESIntegTestCase {
 
         {
             // introduction of a new object with 2 new sub-fields fails
-            Exception exc = expectThrows(
-                DocumentParsingException.class,
-                prepareIndex("index1").setId("1")
-                    .setSource("field3", "value3", "my_object2", Map.of("new_field1", "value1", "new_field2", "value2"))
-            );
+            final IndexRequestBuilder indexRequestBuilder = prepareIndex("index1").setId("1")
+                .setSource("field3", "value3", "my_object2", Map.of("new_field1", "value1", "new_field2", "value2"));
+            Exception exc = expectThrows(DocumentParsingException.class, indexRequestBuilder);
+            indexRequestBuilder.request().decRef();
             assertThat(exc.getMessage(), Matchers.containsString("failed to parse"));
             assertThat(exc.getCause(), instanceOf(IllegalArgumentException.class));
             assertThat(
@@ -280,7 +287,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
 
         {
             // introduction of a new single field succeeds
-            prepareIndex("index1").setId("2").setSource("field3", "value3", "new_field4", 100).get();
+            indexDoc("index1", "2", "field3", "value3", "new_field4", 100);
         }
 
         {
@@ -295,8 +302,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
                 """, XContentType.JSON));
 
             // introduction of a new object with 2 new sub-fields succeeds
-            prepareIndex("index1").setId("1")
-                .setSource("field3", "value3", "my_object2", Map.of("new_field1", "value1", "new_field2", "value2"));
+            indexDoc("index1", "1", "field3", "value3", "my_object2", Map.of("new_field1", "value1", "new_field2", "value2"));
         }
     }
 
@@ -304,7 +310,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
         createIndex("test");
         final ClusterService clusterService = internalCluster().clusterService();
         final long previousVersion = clusterService.state().metadata().index("test").getMappingVersion();
-        prepareIndex("test").setId("1").setSource("field", "text").get();
+        indexDoc("test", "1", "field", "text");
         assertBusy(() -> assertThat(clusterService.state().metadata().index("test").getMappingVersion(), equalTo(1 + previousVersion)));
     }
 
@@ -367,7 +373,10 @@ public class DynamicMappingIT extends ESIntegTestCase {
 
         Randomness.shuffle(requests);
         try (BulkRequest bulkRequest = new BulkRequest().setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE)) {
-            requests.forEach(bulkRequest::add);
+            requests.forEach(request -> {
+                bulkRequest.add(request);
+                request.decRef();
+            });
             final BulkResponse bulkResponse = client().bulk(bulkRequest).actionGet();
             assertFalse(bulkResponse.hasFailures());
         }
@@ -420,14 +429,15 @@ public class DynamicMappingIT extends ESIntegTestCase {
         mappings.endObject();
 
         try (BulkRequest bulkRequest = new BulkRequest().setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE)) {
-            bulkRequest.add(
-                new IndexRequest("test").id("1")
-                    .source(XContentFactory.jsonBuilder().startObject().field("my_location", "41.12,-71.34").endObject())
-                    .setDynamicTemplates(Map.of("my_location", "foo_bar")),
-                new IndexRequest("test").id("2")
-                    .source(XContentFactory.jsonBuilder().startObject().field("address.location", "41.12,-71.34").endObject())
-                    .setDynamicTemplates(Map.of("address.location", "bar_foo"))
-            );
+            IndexRequest indexRequest1 = new IndexRequest("test").id("1")
+                .source(XContentFactory.jsonBuilder().startObject().field("my_location", "41.12,-71.34").endObject())
+                .setDynamicTemplates(Map.of("my_location", "foo_bar"));
+            IndexRequest indexRequest2 = new IndexRequest("test").id("2")
+                .source(XContentFactory.jsonBuilder().startObject().field("address.location", "41.12,-71.34").endObject())
+                .setDynamicTemplates(Map.of("address.location", "bar_foo"));
+            bulkRequest.add(indexRequest1, indexRequest2);
+            indexRequest1.decRef();
+            indexRequest2.decRef();
             final BulkResponse bulkItemResponses = client().bulk(bulkRequest).actionGet();
             assertTrue(bulkItemResponses.hasFailures());
             assertThat(bulkItemResponses.getItems()[0].getFailure().getCause(), instanceOf(DocumentParsingException.class));
@@ -458,6 +468,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
         try (BulkRequest bulkRequest = new BulkRequest()) {
             for (IndexRequest doc : docs) {
                 bulkRequest.add(doc);
+                doc.decRef();
             }
             bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
             BulkResponse bulkItemResponses = client().bulk(bulkRequest).actionGet();
@@ -498,6 +509,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
         try (BulkRequest bulkRequest = new BulkRequest()) {
             for (IndexRequest doc : docs) {
                 bulkRequest.add(doc);
+                doc.decRef();
             }
             bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
             BulkResponse bulkItemResponses = client().bulk(bulkRequest).actionGet();
@@ -509,7 +521,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
         assertHitCount(prepareSearch("test").setQuery(new MatchQueryBuilder("obj.runtime.one", "one")), 1);
         assertHitCount(prepareSearch("test").setQuery(new MatchQueryBuilder("obj.runtime.one.two", "1")), 1);
 
-        Exception exception = expectThrows(DocumentParsingException.class, prepareIndex("test").setSource("obj.runtime", "value"));
+        Exception exception = expectThrows(DocumentParsingException.class, () -> indexDoc("test", null, "obj.runtime", "value"));
         assertThat(
             exception.getMessage(),
             containsString("object mapping for [obj.runtime] tried to parse field [runtime] as object, but found a concrete value")
@@ -538,22 +550,16 @@ public class DynamicMappingIT extends ESIntegTestCase {
         // the parent object has been mapped dynamic:true, hence the field gets indexed
         // we use a fixed doc id here to make sure this document and the one we sent later with a conflicting type
         // target the same shard where we are sure the mapping update has been applied
-        assertEquals(
-            RestStatus.CREATED,
-            prepareIndex("test").setSource("obj.runtime.dynamic.number", 1)
-                .setId("id")
-                .setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE)
-                .get()
-                .status()
-        );
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setSource("obj.runtime.dynamic.number", 1)
+            .setId("id")
+            .setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
+        assertEquals(RestStatus.CREATED, indexRequestBuilder.get().status());
+        indexRequestBuilder.request().decRef();
 
         assertHitCount(prepareSearch("test").setQuery(new MatchQueryBuilder("obj.runtime.dynamic.number", 1)), 1);
 
         // a doc with the same field but a different type causes a conflict
-        Exception e = expectThrows(
-            DocumentParsingException.class,
-            prepareIndex("test").setId("id").setSource("obj.runtime.dynamic.number", "string")
-        );
+        Exception e = expectThrows(DocumentParsingException.class, () -> indexDoc("test", "id", "obj.runtime.dynamic.number", "string"));
         assertThat(
             e.getMessage(),
             containsString(
@@ -579,6 +585,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
         IndexRequest request = new IndexRequest("test").setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE)
             .source("host.name", "localhost", "host.id", 111, "time", 100, "time.max", 1000);
         DocWriteResponse indexResponse = client().index(request).actionGet();
+        request.decRef();
         assertEquals(RestStatus.CREATED, indexResponse.status());
 
         assertBusy(() -> {
@@ -624,6 +631,7 @@ public class DynamicMappingIT extends ESIntegTestCase {
                 1000
             );
         DocWriteResponse indexResponse = client().index(request).actionGet();
+        request.decRef();
         assertEquals(RestStatus.CREATED, indexResponse.status());
 
         assertBusy(() -> {
@@ -661,11 +669,15 @@ public class DynamicMappingIT extends ESIntegTestCase {
               }
             }""").get());
 
-        client().index(new IndexRequest("test").source("mapped_obj.vector", Randomness.get().doubles(3, 0.0, 5.0).toArray())).get();
+        IndexRequest indexRequest = new IndexRequest("test").source("mapped_obj.vector", Randomness.get().doubles(3, 0.0, 5.0).toArray());
+        client().index(indexRequest).get();
+        indexRequest.decRef();
 
-        client().index(
-            new IndexRequest("test").source("obj.vector", Randomness.get().doubles(MIN_DIMS_FOR_DYNAMIC_FLOAT_MAPPING, 0.0, 5.0).toArray())
-        ).get();
-
+        indexRequest = new IndexRequest("test").source(
+            "obj.vector",
+            Randomness.get().doubles(MIN_DIMS_FOR_DYNAMIC_FLOAT_MAPPING, 0.0, 5.0).toArray()
+        );
+        client().index(indexRequest).get();
+        indexRequest.decRef();
     }
 }

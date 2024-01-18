@@ -16,6 +16,7 @@ import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.get.GetResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.common.lucene.uid.Versions;
@@ -52,48 +53,35 @@ public class SimpleVersioningIT extends ESIntegTestCase {
         assertEquals(DocWriteResponse.Result.NOT_FOUND, deleteResponse.getResult());
 
         // this should conflict with the delete command transaction which told us that the object was deleted at version 17.
-        assertFutureThrows(
-            prepareIndex("test").setId("1").setSource("field1", "value1_1").setVersion(13).setVersionType(VersionType.EXTERNAL).execute(),
-            VersionConflictEngineException.class
-        );
-
-        DocWriteResponse indexResponse = prepareIndex("test").setId("1")
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1")
             .setSource("field1", "value1_1")
-            .setVersion(18)
-            .setVersionType(VersionType.EXTERNAL)
-            .get();
+            .setVersion(13)
+            .setVersionType(VersionType.EXTERNAL);
+        assertFutureThrows(indexRequestBuilder.execute(), VersionConflictEngineException.class);
+        indexRequestBuilder.request().decRef();
+
+        DocWriteResponse indexResponse = indexDocWithVersion("test", "1", 18, VersionType.EXTERNAL, "field1", "value1_1");
         assertThat(indexResponse.getVersion(), equalTo(18L));
     }
 
     public void testExternalGTE() throws Exception {
         createIndex("test");
 
-        DocWriteResponse indexResponse = prepareIndex("test").setId("1")
-            .setSource("field1", "value1_1")
-            .setVersion(12)
-            .setVersionType(VersionType.EXTERNAL_GTE)
-            .get();
+        DocWriteResponse indexResponse = indexDocWithVersion("test", "1", 12, VersionType.EXTERNAL_GTE, "field1", "value1_1");
         assertThat(indexResponse.getVersion(), equalTo(12L));
 
-        indexResponse = prepareIndex("test").setId("1")
-            .setSource("field1", "value1_2")
-            .setVersion(12)
-            .setVersionType(VersionType.EXTERNAL_GTE)
-            .get();
+        indexResponse = indexDocWithVersion("test", "1", 12, VersionType.EXTERNAL_GTE, "field1", "value1_2");
         assertThat(indexResponse.getVersion(), equalTo(12L));
 
-        indexResponse = prepareIndex("test").setId("1")
-            .setSource("field1", "value1_2")
-            .setVersion(14)
-            .setVersionType(VersionType.EXTERNAL_GTE)
-            .get();
+        indexResponse = indexDocWithVersion("test", "1", 14, VersionType.EXTERNAL_GTE, "field1", "value1_2");
         assertThat(indexResponse.getVersion(), equalTo(14L));
 
-        ActionRequestBuilder<?, ?> builder1 = prepareIndex("test").setId("1")
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1")
             .setSource("field1", "value1_1")
             .setVersion(13)
             .setVersionType(VersionType.EXTERNAL_GTE);
-        expectThrows(VersionConflictEngineException.class, builder1);
+        expectThrows(VersionConflictEngineException.class, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
         client().admin().indices().prepareRefresh().get();
         if (randomBoolean()) {
@@ -129,24 +117,18 @@ public class SimpleVersioningIT extends ESIntegTestCase {
         createIndex("test");
         ensureGreen();
 
-        DocWriteResponse indexResponse = prepareIndex("test").setId("1")
-            .setSource("field1", "value1_1")
-            .setVersion(12)
-            .setVersionType(VersionType.EXTERNAL)
-            .get();
+        DocWriteResponse indexResponse = indexDocWithVersion("test", "1", 12, VersionType.EXTERNAL, "field1", "value1_1");
         assertThat(indexResponse.getVersion(), equalTo(12L));
 
-        indexResponse = prepareIndex("test").setId("1")
-            .setSource("field1", "value1_1")
-            .setVersion(14)
-            .setVersionType(VersionType.EXTERNAL)
-            .get();
+        indexResponse = indexDocWithVersion("test", "1", 14, VersionType.EXTERNAL, "field1", "value1_1");
         assertThat(indexResponse.getVersion(), equalTo(14L));
 
-        assertFutureThrows(
-            prepareIndex("test").setId("1").setSource("field1", "value1_1").setVersion(13).setVersionType(VersionType.EXTERNAL).execute(),
-            VersionConflictEngineException.class
-        );
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1")
+            .setSource("field1", "value1_1")
+            .setVersion(13)
+            .setVersionType(VersionType.EXTERNAL);
+        assertFutureThrows(indexRequestBuilder.execute(), VersionConflictEngineException.class);
+        indexRequestBuilder.request().decRef();
 
         if (randomBoolean()) {
             refresh();
@@ -179,11 +161,7 @@ public class SimpleVersioningIT extends ESIntegTestCase {
 
         // TODO: This behavior breaks rest api returning http status 201
         // good news is that it this is only the case until deletes GC kicks in.
-        indexResponse = prepareIndex("test").setId("1")
-            .setSource("field1", "value1_1")
-            .setVersion(19)
-            .setVersionType(VersionType.EXTERNAL)
-            .get();
+        indexResponse = indexDocWithVersion("test", "1", 19, VersionType.EXTERNAL, "field1", "value1_1");
         assertThat(indexResponse.getVersion(), equalTo(19L));
 
         deleteResponse = client().prepareDelete("test", "1").setVersion(20).setVersionType(VersionType.EXTERNAL).get();
@@ -195,11 +173,7 @@ public class SimpleVersioningIT extends ESIntegTestCase {
         Thread.sleep(300); // gc works based on estimated sampled time. Give it a chance...
 
         // And now we have previous version return -1
-        indexResponse = prepareIndex("test").setId("1")
-            .setSource("field1", "value1_1")
-            .setVersion(20)
-            .setVersionType(VersionType.EXTERNAL)
-            .get();
+        indexResponse = indexDocWithVersion("test", "1", 20, VersionType.EXTERNAL, "field1", "value1_1");
         assertThat(indexResponse.getVersion(), equalTo(20L));
     }
 
@@ -229,7 +203,7 @@ public class SimpleVersioningIT extends ESIntegTestCase {
             VersionConflictEngineException.class
         );
 
-        DocWriteResponse indexResponse = prepareIndex("test").setId("1").setSource("field1", "value1_1").setCreate(true).get();
+        DocWriteResponse indexResponse = indexDocWithCreateTrue("test", "1", "field1", "value1_1");
         assertThat(indexResponse.getVersion(), equalTo(1L));
     }
 
@@ -237,28 +211,28 @@ public class SimpleVersioningIT extends ESIntegTestCase {
         createIndex("test");
         ensureGreen();
 
-        DocWriteResponse indexResponse = prepareIndex("test").setId("1").setSource("field1", "value1_1").get();
+        DocWriteResponse indexResponse = indexDoc("test", "1", "field1", "value1_1");
         assertThat(indexResponse.getSeqNo(), equalTo(0L));
         assertThat(indexResponse.getPrimaryTerm(), equalTo(1L));
 
-        indexResponse = prepareIndex("test").setId("1").setSource("field1", "value1_2").setIfSeqNo(0L).setIfPrimaryTerm(1).get();
+        indexResponse = indexDocWithSeqNoAndPrimaryTerm("test", "1", 0L, 1, "field1", "value1_2");
         assertThat(indexResponse.getSeqNo(), equalTo(1L));
         assertThat(indexResponse.getPrimaryTerm(), equalTo(1L));
 
-        assertFutureThrows(
-            prepareIndex("test").setId("1").setSource("field1", "value1_1").setIfSeqNo(10).setIfPrimaryTerm(1).execute(),
-            VersionConflictEngineException.class
-        );
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1")
+            .setSource("field1", "value1_1")
+            .setIfSeqNo(10)
+            .setIfPrimaryTerm(1);
+        assertFutureThrows(indexRequestBuilder.execute(), VersionConflictEngineException.class);
+        indexRequestBuilder.request().decRef();
 
-        assertFutureThrows(
-            prepareIndex("test").setId("1").setSource("field1", "value1_1").setIfSeqNo(10).setIfPrimaryTerm(2).execute(),
-            VersionConflictEngineException.class
-        );
+        indexRequestBuilder = prepareIndex("test").setId("1").setSource("field1", "value1_1").setIfSeqNo(10).setIfPrimaryTerm(2);
+        assertFutureThrows(indexRequestBuilder.execute(), VersionConflictEngineException.class);
+        indexRequestBuilder.request().decRef();
 
-        assertFutureThrows(
-            prepareIndex("test").setId("1").setSource("field1", "value1_1").setIfSeqNo(1).setIfPrimaryTerm(2).execute(),
-            VersionConflictEngineException.class
-        );
+        indexRequestBuilder = prepareIndex("test").setId("1").setSource("field1", "value1_1").setIfSeqNo(1).setIfPrimaryTerm(2);
+        assertFutureThrows(indexRequestBuilder.execute(), VersionConflictEngineException.class);
+        indexRequestBuilder.request().decRef();
 
         ActionRequestBuilder<?, ?> builder6 = client().prepareDelete("test", "1").setIfSeqNo(10).setIfPrimaryTerm(1);
         expectThrows(VersionConflictEngineException.class, builder6);
@@ -312,22 +286,24 @@ public class SimpleVersioningIT extends ESIntegTestCase {
         createIndex("test");
         ensureGreen();
 
-        DocWriteResponse indexResponse = prepareIndex("test").setId("1").setSource("field1", "value1_1").get();
+        DocWriteResponse indexResponse = indexDoc("test", "1", "field1", "value1_1");
         assertThat(indexResponse.getSeqNo(), equalTo(0L));
 
         client().admin().indices().prepareFlush().get();
-        indexResponse = prepareIndex("test").setId("1").setSource("field1", "value1_2").setIfSeqNo(0).setIfPrimaryTerm(1).get();
+        indexResponse = indexDocWithSeqNoAndPrimaryTerm("test", "1", 0, 1, "field1", "value1_2");
         assertThat(indexResponse.getSeqNo(), equalTo(1L));
 
         client().admin().indices().prepareFlush().get();
-        ActionRequestBuilder<?, ?> builder2 = prepareIndex("test").setId("1")
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1")
             .setSource("field1", "value1_1")
             .setIfSeqNo(0)
             .setIfPrimaryTerm(1);
-        expectThrows(VersionConflictEngineException.class, builder2);
+        expectThrows(VersionConflictEngineException.class, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
-        ActionRequestBuilder<?, ?> builder1 = prepareIndex("test").setId("1").setCreate(true).setSource("field1", "value1_1");
-        expectThrows(VersionConflictEngineException.class, builder1);
+        indexRequestBuilder = prepareIndex("test").setId("1").setCreate(true).setSource("field1", "value1_1");
+        expectThrows(VersionConflictEngineException.class, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
         ActionRequestBuilder<?, ?> builder = client().prepareDelete("test", "1").setIfSeqNo(0).setIfPrimaryTerm(1);
         expectThrows(VersionConflictEngineException.class, builder);
@@ -352,7 +328,9 @@ public class SimpleVersioningIT extends ESIntegTestCase {
         ensureGreen();
 
         try (BulkRequestBuilder bulkRequestBuilder = client().prepareBulk()) {
-            BulkResponse bulkResponse = bulkRequestBuilder.add(prepareIndex("test").setId("1").setSource("field1", "value1_1")).get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("field1", "value1_1");
+            BulkResponse bulkResponse = bulkRequestBuilder.add(indexRequestBuilder).get();
+            indexRequestBuilder.request().decRef();
             assertThat(bulkResponse.hasFailures(), equalTo(false));
             assertThat(bulkResponse.getItems().length, equalTo(1));
             IndexResponse indexResponse = bulkResponse.getItems()[0].getResponse();
@@ -633,12 +611,7 @@ public class SimpleVersioningIT extends ESIntegTestCase {
                                 }
                             } else {
                                 try {
-                                    idVersion.response = prepareIndex("test").setId(id)
-                                        .setSource("foo", "bar")
-                                        .setVersion(version)
-                                        .setVersionType(VersionType.EXTERNAL)
-                                        .get();
-
+                                    idVersion.response = indexDocWithVersion("test", id, version, VersionType.EXTERNAL, "foo", "bar");
                                 } catch (VersionConflictEngineException vcee) {
                                     // OK: our version is too old
                                     assertThat(version, lessThanOrEqualTo(truth.get(id).version));
@@ -708,12 +681,13 @@ public class SimpleVersioningIT extends ESIntegTestCase {
         updateIndexSettings(Settings.builder().put("index.gc_deletes", "10ms").put("index.refresh_interval", "-1"), "test");
 
         // Index a doc:
-        prepareIndex("test").setId("id")
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("id")
             .setSource("foo", "bar")
             .setOpType(DocWriteRequest.OpType.INDEX)
             .setVersion(10)
-            .setVersionType(VersionType.EXTERNAL)
-            .get();
+            .setVersionType(VersionType.EXTERNAL);
+        indexRequestBuilder.get();
+        indexRequestBuilder.request().decRef();
 
         if (randomBoolean()) {
             // Force refresh so the add is sometimes visible in the searcher:
@@ -744,12 +718,13 @@ public class SimpleVersioningIT extends ESIntegTestCase {
         // We test deletes, but can't rely on wall-clock delete GC:
         updateIndexSettings(Settings.builder().put("index.gc_deletes", "0ms"), "test");
         // Index a doc:
-        prepareIndex("test").setId("id")
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("id")
             .setSource("foo", "bar")
             .setOpType(DocWriteRequest.OpType.INDEX)
             .setVersion(10)
-            .setVersionType(VersionType.EXTERNAL)
-            .get();
+            .setVersionType(VersionType.EXTERNAL);
+        indexRequestBuilder.get();
+        indexRequestBuilder.request().decRef();
 
         if (randomBoolean()) {
             // Force refresh so the add is sometimes visible in the searcher:
@@ -766,33 +741,50 @@ public class SimpleVersioningIT extends ESIntegTestCase {
     public void testSpecialVersioning() {
         internalCluster().ensureAtLeastNumDataNodes(2);
         createIndex("test", Settings.builder().put(IndexMetadata.SETTING_NUMBER_OF_REPLICAS, 0).build());
-        DocWriteResponse doc1 = prepareIndex("test").setId("1")
-            .setSource("field", "value1")
-            .setVersion(0)
-            .setVersionType(VersionType.EXTERNAL)
-            .get();
+        DocWriteResponse doc1 = indexDocWithVersion("test", "1", 0, VersionType.EXTERNAL, "field", "value1");
         assertThat(doc1.getVersion(), equalTo(0L));
-        DocWriteResponse doc2 = prepareIndex("test").setId("1")
-            .setSource("field", "value2")
-            .setVersion(Versions.MATCH_ANY)
-            .setVersionType(VersionType.INTERNAL)
-            .get();
+        DocWriteResponse doc2 = indexDocWithVersion("test", "1", Versions.MATCH_ANY, VersionType.INTERNAL, "field", "value2");
         assertThat(doc2.getVersion(), equalTo(1L));
         client().prepareDelete("test", "1").get(); // v2
-        DocWriteResponse doc3 = prepareIndex("test").setId("1")
-            .setSource("field", "value3")
-            .setVersion(Versions.MATCH_DELETED)
-            .setVersionType(VersionType.INTERNAL)
-            .get();
+        DocWriteResponse doc3 = indexDocWithVersion("test", "1", Versions.MATCH_DELETED, VersionType.INTERNAL, "field", "value3");
         assertThat(doc3.getVersion(), equalTo(3L));
-        DocWriteResponse doc4 = prepareIndex("test").setId("1")
-            .setSource("field", "value4")
-            .setVersion(4L)
-            .setVersionType(VersionType.EXTERNAL_GTE)
-            .get();
+        DocWriteResponse doc4 = indexDocWithVersion("test", "1", 4L, VersionType.EXTERNAL_GTE, "field", "value4");
         assertThat(doc4.getVersion(), equalTo(4L));
         // Make sure that these versions are replicated correctly
         setReplicaCount(1, "test");
         ensureGreen("test");
+    }
+
+    private DocWriteResponse indexDocWithVersion(String index, String id, long version, VersionType versionType, Object... source) {
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index).setId(id)
+            .setVersion(version)
+            .setVersionType(versionType)
+            .setSource(source);
+        try {
+            return indexRequestBuilder.get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
+    }
+
+    private DocWriteResponse indexDocWithCreateTrue(String index, String id, Object... source) {
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index).setId(id).setCreate(true).setSource(source);
+        try {
+            return indexRequestBuilder.get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
+    }
+
+    private DocWriteResponse indexDocWithSeqNoAndPrimaryTerm(String index, String id, long seqNo, long primaryTerm, Object... source) {
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index).setId(id)
+            .setIfSeqNo(seqNo)
+            .setIfPrimaryTerm(primaryTerm)
+            .setSource(source);
+        try {
+            return indexRequestBuilder.get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
     }
 }

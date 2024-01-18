@@ -159,7 +159,7 @@ public class BulkRequest extends ActionRequest
     BulkRequest internalAdd(IndexRequest request) {
         Objects.requireNonNull(request, "'request' must not be null");
         applyGlobalMandatoryParameters(request);
-
+        request.incRef();
         requests.add(request);
         // lack of source is validated in validate() method
         sizeInBytes += (request.source() != null ? request.source().length() : 0) + REQUEST_OVERHEAD;
@@ -175,6 +175,7 @@ public class BulkRequest extends ActionRequest
     }
 
     BulkRequest internalAdd(UpdateRequest request) {
+        request.incRef();
         Objects.requireNonNull(request, "'request' must not be null");
         applyGlobalMandatoryParameters(request);
 
@@ -209,7 +210,7 @@ public class BulkRequest extends ActionRequest
      * The list of requests in this bulk request.
      */
     public List<DocWriteRequest<?>> requests() {
-        return this.requests;
+        return Collections.unmodifiableList(this.requests);
     }
 
     /**
@@ -494,7 +495,15 @@ public class BulkRequest extends ActionRequest
 
     @Override
     public boolean decRef() {
-        return refCounted.decRef();
+        boolean droppedToZero = refCounted.decRef();
+        if (droppedToZero) {
+            for (DocWriteRequest<?> request : requests) {
+                if (request instanceof RefCounted refCountedRequest) {
+                    refCountedRequest.decRef();
+                }
+            }
+        }
+        return droppedToZero;
     }
 
     @Override

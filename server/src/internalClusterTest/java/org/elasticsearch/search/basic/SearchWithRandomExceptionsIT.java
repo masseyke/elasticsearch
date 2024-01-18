@@ -14,6 +14,7 @@ import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.tests.util.English;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.DocWriteResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.search.SearchPhaseExecutionException;
 import org.elasticsearch.action.support.broadcast.BroadcastResponse;
 import org.elasticsearch.common.Strings;
@@ -98,8 +99,9 @@ public class SearchWithRandomExceptionsIT extends ESIntegTestCase {
         int numCreated = 0;
         boolean[] added = new boolean[numDocs];
         for (int i = 0; i < numDocs; i++) {
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("test");
             try {
-                DocWriteResponse indexResponse = prepareIndex("test").setId("" + i)
+                DocWriteResponse indexResponse = indexRequestBuilder.setId("" + i)
                     .setTimeout(TimeValue.timeValueSeconds(1))
                     .setSource("test", English.intToEnglish(i))
                     .get();
@@ -107,7 +109,9 @@ public class SearchWithRandomExceptionsIT extends ESIntegTestCase {
                     numCreated++;
                     added[i] = true;
                 }
-            } catch (ElasticsearchException ex) {}
+            } catch (ElasticsearchException ex) {} finally {
+                indexRequestBuilder.request().decRef();
+            }
         }
         logger.info("Start Refresh");
         // don't assert on failures here

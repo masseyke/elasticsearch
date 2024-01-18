@@ -266,7 +266,11 @@ public final class AsyncTaskIndexService<R extends AsyncResponse<R>> {
             }
 
             addResultFieldAndFinish(response, source);
-            clientWithOrigin.index(new IndexRequest(index).create(true).id(docId).source(buffer.bytes(), source.contentType()), listener);
+            IndexRequest indexRequest = new IndexRequest(index);
+            clientWithOrigin.index(
+                indexRequest.create(true).id(docId).source(buffer.bytes(), source.contentType()),
+                ActionListener.runAfter(listener, indexRequest::decRef)
+            );
         } catch (Exception e) {
             listener.onFailure(e);
         }
@@ -287,9 +291,16 @@ public final class AsyncTaskIndexService<R extends AsyncResponse<R>> {
             buffer = allocateBuffer(isFailure == false);
             final XContentBuilder source = XContentFactory.jsonBuilder(buffer).startObject().field(RESPONSE_HEADERS_FIELD, responseHeaders);
             addResultFieldAndFinish(response, source);
+            UpdateRequest updateRequest = new UpdateRequest().index(index);
+            try {
+                updateRequest.id(docId).doc(buffer.bytes(), source.contentType()).retryOnConflict(5);
+            } catch (Exception e) {
+                updateRequest.decRef();
+                throw e;
+            }
             clientWithOrigin.update(
-                new UpdateRequest().index(index).id(docId).doc(buffer.bytes(), source.contentType()).retryOnConflict(5),
-                ActionListener.runBefore(listener, buffer::close)
+                updateRequest,
+                ActionListener.runAfter(ActionListener.runBefore(listener, buffer::close), updateRequest::decRef)
             );
         } catch (Exception e) {
             // release buffer right away to save memory, particularly in case the exception came from the circuit breaker
@@ -348,8 +359,14 @@ public final class AsyncTaskIndexService<R extends AsyncResponse<R>> {
      */
     public void updateExpirationTime(String docId, long expirationTimeMillis, ActionListener<UpdateResponse> listener) {
         Map<String, Object> source = Collections.singletonMap(EXPIRATION_TIME_FIELD, expirationTimeMillis);
-        UpdateRequest request = new UpdateRequest().index(index).id(docId).doc(source, XContentType.JSON).retryOnConflict(5);
-        clientWithOrigin.update(request, listener);
+        UpdateRequest request = new UpdateRequest().index(index);
+        try {
+            request.id(docId).doc(source, XContentType.JSON).retryOnConflict(5);
+        } catch (Exception e) {
+            request.decRef();
+            throw e;
+        }
+        clientWithOrigin.update(request, ActionListener.runAfter(listener, request::decRef));
     }
 
     /**

@@ -421,8 +421,8 @@ public class HeapAttackIT extends ESRestTestCase {
 
     private void initManyLongs() throws IOException {
         logger.info("loading many documents with longs");
-        StringBuilder bulk = new StringBuilder();
         for (int a = 0; a < 10; a++) {
+            StringBuilder bulk = new StringBuilder();
             for (int b = 0; b < 10; b++) {
                 for (int c = 0; c < 10; c++) {
                     for (int d = 0; d < 10; d++) {
@@ -438,7 +438,6 @@ public class HeapAttackIT extends ESRestTestCase {
             bulk("manylongs", bulk.toString());
             bulk.setLength(0);
         }
-        initIndex("manylongs", bulk.toString());
     }
 
     private void initSingleDocIndex() throws IOException {

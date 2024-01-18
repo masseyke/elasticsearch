@@ -211,6 +211,9 @@ public class IndicesShardStoreRequestIT extends ESIntegTestCase {
             builders[i] = prepareIndex(index).setSource("field", "value");
         }
         indexRandom(true, builders);
+        for (IndexRequestBuilder builder : builders) {
+            builder.request().decRef();
+        }
         indicesAdmin().prepareFlush().setForce(true).get();
     }
 

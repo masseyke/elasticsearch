@@ -270,7 +270,16 @@ public class JobResultsPersister {
 
         private void indexResult(String id, ToXContent resultDoc, ToXContent.Params params, String resultType) {
             try (XContentBuilder content = toXContentBuilder(resultDoc, params)) {
-                items.put(id, new IndexRequest(indexName).id(id).source(content));
+                IndexRequest indexRequest = new IndexRequest(indexName);
+                try {
+                    IndexRequest previousRequest = items.put(id, indexRequest.id(id).source(content));
+                    if (previousRequest != null) {
+                        previousRequest.decRef();
+                    }
+                } catch (Exception e) {
+                    indexRequest.decRef();
+                    throw e;
+                }
             } catch (IOException e) {
                 logger.error(() -> format("[%s] Error serialising %s", jobId, resultType), e);
             }
@@ -308,6 +317,9 @@ public class JobResultsPersister {
         }
 
         public synchronized void clear() {
+            for (IndexRequest indexRequest : items.values()) {
+                indexRequest.decRef();
+            }
             items.clear();
         }
 
@@ -584,11 +596,20 @@ public class JobResultsPersister {
             logCall();
 
             try (XContentBuilder content = toXContentBuilder(object, params)) {
-                IndexRequest indexRequest = new IndexRequest(indexName).id(id)
-                    .source(content)
-                    .setRefreshPolicy(refreshPolicy)
-                    .setRequireAlias(requireAlias);
-                executeAsyncWithOrigin(client.threadPool().getThreadContext(), ML_ORIGIN, indexRequest, listener, client::index);
+                IndexRequest indexRequest = new IndexRequest(indexName).id(id);
+                try {
+                    indexRequest.source(content).setRefreshPolicy(refreshPolicy).setRequireAlias(requireAlias);
+                    executeAsyncWithOrigin(
+                        client.threadPool().getThreadContext(),
+                        ML_ORIGIN,
+                        indexRequest,
+                        ActionListener.runAfter(listener, indexRequest::decRef),
+                        client::index
+                    );
+                } catch (Exception e) {
+                    indexRequest.decRef();
+                    throw e;
+                }
             } catch (IOException e) {
                 logger.error(() -> format("[%s] Error writing [%s]", jobId, (id == null) ? "auto-generated ID" : id), e);
                 IndexResponse.Builder notCreatedResponse = new IndexResponse.Builder();

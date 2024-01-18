@@ -70,6 +70,7 @@ public class RestReindexActionTests extends RestActionTestCase {
             requestBuilder.withContent(new BytesArray("{}"), XContentType.JSON);
             ReindexRequest request = action.buildRequest(requestBuilder.build(), new NamedWriteableRegistry(Collections.emptyList()));
             assertEquals(AbstractBulkByScrollRequest.DEFAULT_SCROLL_TIMEOUT, request.getScrollTime());
+            request.decRef();
         }
         {
             FakeRestRequest.Builder requestBuilder = new FakeRestRequest.Builder(xContentRegistry());
@@ -77,6 +78,7 @@ public class RestReindexActionTests extends RestActionTestCase {
             requestBuilder.withContent(new BytesArray("{}"), XContentType.JSON);
             ReindexRequest request = action.buildRequest(requestBuilder.build(), new NamedWriteableRegistry(Collections.emptyList()));
             assertEquals("10m", request.getScrollTime().toString());
+            request.decRef();
         }
     }
 }

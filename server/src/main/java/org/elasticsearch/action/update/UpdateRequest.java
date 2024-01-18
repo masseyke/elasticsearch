@@ -25,13 +25,16 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.lucene.uid.Versions;
 import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
 import org.elasticsearch.common.xcontent.XContentHelper;
+import org.elasticsearch.core.AbstractRefCounted;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.core.RefCounted;
 import org.elasticsearch.index.VersionType;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.script.Script;
 import org.elasticsearch.script.ScriptType;
 import org.elasticsearch.search.fetch.subphase.FetchSourceContext;
+import org.elasticsearch.transport.LeakTracker;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ObjectParser;
 import org.elasticsearch.xcontent.ParseField;
@@ -126,8 +129,11 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest>
 
     @Nullable
     private IndexRequest doc;
+    private final RefCounted refCounted;
 
-    public UpdateRequest() {}
+    public UpdateRequest() {
+        this.refCounted = LeakTracker.wrap(new UpdateRequestRefCounted());
+    }
 
     public UpdateRequest(StreamInput in) throws IOException {
         this(null, in);
@@ -164,11 +170,13 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest>
         } else {
             requireAlias = false;
         }
+        this.refCounted = LeakTracker.wrap(new UpdateRequestRefCounted());
     }
 
     public UpdateRequest(String index, String id) {
         super(index);
         this.id = id;
+        this.refCounted = LeakTracker.wrap(new UpdateRequestRefCounted());
     }
 
     @Override
@@ -616,6 +624,7 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest>
      */
     public UpdateRequest doc(IndexRequest doc) {
         this.doc = doc;
+        this.doc.incRef();
         return this;
     }
 
@@ -710,6 +719,7 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest>
      */
     public UpdateRequest upsert(IndexRequest upsertRequest) {
         this.upsertRequest = upsertRequest;
+        this.upsertRequest.incRef();
         return this;
     }
 
@@ -1002,5 +1012,43 @@ public class UpdateRequest extends InstanceShardOperationRequest<UpdateRequest>
             childRequestBytes += upsertRequest.ramBytesUsed();
         }
         return SHALLOW_SIZE + RamUsageEstimator.sizeOf(id) + childRequestBytes;
+    }
+
+    @Override
+    public void incRef() {
+        refCounted.incRef();
+    }
+
+    @Override
+    public boolean tryIncRef() {
+        return refCounted.tryIncRef();
+    }
+
+    @Override
+    public boolean decRef() {
+        assert refCounted.hasReferences() : "Attempt to decRef UpdateRequest that is already closed";
+        boolean droppedToZero = refCounted.decRef();
+        if (droppedToZero) {
+            if (doc != null) {
+                doc.decRef();
+            }
+            if (upsertRequest != null) {
+                upsertRequest.decRef();
+            }
+        }
+        return droppedToZero;
+    }
+
+    @Override
+    public boolean hasReferences() {
+        return refCounted.hasReferences();
+    }
+
+    private static class UpdateRequestRefCounted extends AbstractRefCounted {
+
+        @Override
+        protected void closeInternal() {
+            // nothing to close
+        }
     }
 }

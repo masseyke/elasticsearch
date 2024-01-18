@@ -101,6 +101,7 @@ import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.common.util.concurrent.ThreadContext.StoredContext;
 import org.elasticsearch.common.util.set.Sets;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.core.RefCounted;
 import org.elasticsearch.core.Releasable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
@@ -1554,23 +1555,27 @@ public class AuthorizationServiceTests extends ESTestCase {
 
         AuditUtil.getOrGenerateRequestId(threadContext);
 
+        IndexRequest indexRequest1 = new IndexRequest(index).id("doc-1")
+            .opType(DocWriteRequest.OpType.CREATE)
+            .source(Map.of("field", "value"));
+        IndexRequest indexRequest2 = new IndexRequest(index).id("doc-2")
+            .opType(DocWriteRequest.OpType.INDEX)
+            .source(Map.of("field", "value"));
         try (
             BulkShardRequest request = new BulkShardRequest(
                 new ShardId(index, randomAlphaOfLength(24), 1),
                 WriteRequest.RefreshPolicy.NONE,
                 new BulkItemRequest[] {
-                    new BulkItemRequest(
-                        0,
-                        new IndexRequest(index).id("doc-1").opType(DocWriteRequest.OpType.CREATE).source(Map.of("field", "value"))
-                    ),
-                    new BulkItemRequest(
-                        1,
-                        new IndexRequest(index).id("doc-2").opType(DocWriteRequest.OpType.INDEX).source(Map.of("field", "value"))
-                    ),
+                    new BulkItemRequest(0, indexRequest1),
+                    new BulkItemRequest(1, indexRequest2),
                     new BulkItemRequest(2, new DeleteRequest(index, "doc-3")) }
             )
         ) {
-
+            for (BulkItemRequest item : request.items()) {
+                item.decRef();
+            }
+            indexRequest1.decRef();
+            indexRequest2.decRef();
             authorize(authentication, TransportShardBulkAction.ACTION_NAME, request);
 
             MappingUpdatePerformer mappingUpdater = (m, s, l) -> l.onResponse(null);
@@ -2140,6 +2145,7 @@ public class AuthorizationServiceTests extends ESTestCase {
                 authzInfoRoles(new String[] { role.getName() })
             );
             verifyNoMoreInteractions(auditTrail);
+            requestTuple.v2().decRef();
         }
 
         // we should allow waiting for the health of the index or any index if the user has this permission
@@ -2387,9 +2393,7 @@ public class AuthorizationServiceTests extends ESTestCase {
                     eq(request),
                     authzInfoRoles(superuser.roles())
                 );
-                if (request instanceof Releasable releasable) {
-                    releasable.close();
-                }
+                request.decRef();
             }
         }
     }
@@ -2555,9 +2559,7 @@ public class AuthorizationServiceTests extends ESTestCase {
             authorize(createAuthentication(userAllowed), action, request);
         }
         assertThrowsAuthorizationException(() -> authorize(createAuthentication(userDenied), action, request), action, "userDenied");
-        if (request instanceof Releasable releasable) {
-            releasable.close();
-        }
+        request.decRef();
     }
 
     public void testAuthorizationOfSingleActionMultipleIndicesBulkItems() {
@@ -2578,16 +2580,15 @@ public class AuthorizationServiceTests extends ESTestCase {
         // build a request with bulk items of the same action type, but multiple index names
         switch (opType) {
             case INDEX -> {
-                items = randomArray(
-                    1,
-                    8,
-                    BulkItemRequest[]::new,
-                    () -> new BulkItemRequest(
-                        idCounter.get(),
-                        new IndexRequest(indexNameSupplier.get()).id("id" + idCounter.incrementAndGet())
-                            .opType(DocWriteRequest.OpType.INDEX)
-                    )
-                );
+                items = randomArray(1, 8, BulkItemRequest[]::new, () -> {
+                    IndexRequest indexRequest = new IndexRequest(indexNameSupplier.get()).id("id" + idCounter.incrementAndGet())
+                        .opType(DocWriteRequest.OpType.INDEX);
+                    try {
+                        return new BulkItemRequest(idCounter.get(), indexRequest);
+                    } finally {
+                        indexRequest.decRef();
+                    }
+                });
                 goodRole = new RoleDescriptor(
                     "good-role",
                     null,
@@ -2616,16 +2617,13 @@ public class AuthorizationServiceTests extends ESTestCase {
                 );
             }
             case CREATE -> {
-                items = randomArray(
-                    1,
-                    8,
-                    BulkItemRequest[]::new,
-                    () -> new BulkItemRequest(
-                        idCounter.get(),
-                        new IndexRequest(indexNameSupplier.get()).id("id" + idCounter.incrementAndGet())
-                            .opType(DocWriteRequest.OpType.CREATE)
-                    )
-                );
+                items = randomArray(1, 8, BulkItemRequest[]::new, () -> {
+                    IndexRequest indexRequest = new IndexRequest(indexNameSupplier.get()).id("id" + idCounter.incrementAndGet())
+                        .opType(DocWriteRequest.OpType.CREATE);
+                    BulkItemRequest bulkItemRequest = new BulkItemRequest(idCounter.get(), indexRequest);
+                    indexRequest.decRef();
+                    return bulkItemRequest;
+                });
                 goodRole = new RoleDescriptor(
                     "good-role",
                     null,
@@ -2686,15 +2684,12 @@ public class AuthorizationServiceTests extends ESTestCase {
                 );
             }
             case UPDATE -> {
-                items = randomArray(
-                    1,
-                    8,
-                    BulkItemRequest[]::new,
-                    () -> new BulkItemRequest(
-                        idCounter.get(),
-                        new UpdateRequest(indexNameSupplier.get(), "id" + idCounter.incrementAndGet())
-                    )
-                );
+                items = randomArray(1, 8, BulkItemRequest[]::new, () -> {
+                    UpdateRequest updateRequest = new UpdateRequest(indexNameSupplier.get(), "id" + idCounter.incrementAndGet());
+                    BulkItemRequest bulkItemRequest = new BulkItemRequest(idCounter.get(), updateRequest);
+                    updateRequest.decRef();
+                    return bulkItemRequest;
+                });
                 goodRole = new RoleDescriptor(
                     "good-role",
                     null,
@@ -2729,7 +2724,9 @@ public class AuthorizationServiceTests extends ESTestCase {
 
         final ShardId shardId = new ShardId("some-concrete-shard-index-name", UUID.randomUUID().toString(), 1);
         try (BulkShardRequest request = new BulkShardRequest(shardId, randomFrom(WriteRequest.RefreshPolicy.values()), items)) {
-
+            for (BulkItemRequest item : items) {
+                item.decRef();
+            }
             mockEmptyMetadata();
             final Authentication authentication;
             final String requestId;
@@ -2823,26 +2820,31 @@ public class AuthorizationServiceTests extends ESTestCase {
             switch (randomFrom(DocWriteRequest.OpType.values())) {
                 case INDEX -> {
                     actionTypes.add(TransportIndexAction.NAME + ":op_type/index");
-                    return new BulkItemRequest(
-                        idCounter.get(),
-                        new IndexRequest(indexName).id("id" + idCounter.incrementAndGet()).opType(DocWriteRequest.OpType.INDEX)
-                    );
+                    IndexRequest indexRequest = new IndexRequest(indexName).id("id" + idCounter.incrementAndGet())
+                        .opType(DocWriteRequest.OpType.INDEX);
+                    BulkItemRequest bulkItemRequest = new BulkItemRequest(idCounter.get(), indexRequest);
+                    indexRequest.decRef();
+                    return bulkItemRequest;
                 }
                 case CREATE -> {
                     actionTypes.add(TransportIndexAction.NAME + ":op_type/create");
-                    return new BulkItemRequest(
-                        idCounter.get(),
-                        new IndexRequest(indexName).id("id" + idCounter.incrementAndGet()).opType(DocWriteRequest.OpType.CREATE)
-                    );
+                    IndexRequest indexRequest = new IndexRequest(indexName).id("id" + idCounter.incrementAndGet())
+                        .opType(DocWriteRequest.OpType.CREATE);
+                    BulkItemRequest bulkItemRequest = new BulkItemRequest(idCounter.get(), indexRequest);
+                    indexRequest.decRef();
+                    return bulkItemRequest;
                 }
                 case DELETE -> {
                     actionTypes.add(TransportDeleteAction.NAME);
-                    deleteItems.add(idCounter.get());
-                    return new BulkItemRequest(idCounter.get(), new DeleteRequest(indexName, "id" + idCounter.incrementAndGet()));
+                    deleteItems.add(idCounter.incrementAndGet());
+                    return new BulkItemRequest(idCounter.get(), new DeleteRequest(indexName, "id" + idCounter.get()));
                 }
                 case UPDATE -> {
                     actionTypes.add(TransportUpdateAction.NAME);
-                    return new BulkItemRequest(idCounter.get(), new UpdateRequest(indexName, "id" + idCounter.incrementAndGet()));
+                    UpdateRequest updateRequest = new UpdateRequest(indexName, "id" + idCounter.incrementAndGet());
+                    BulkItemRequest bulkItemRequest = new BulkItemRequest(idCounter.get(), updateRequest);
+                    updateRequest.decRef();
+                    return bulkItemRequest;
                 }
                 default -> throw new IllegalStateException("Unexpected value");
             }
@@ -2864,7 +2866,9 @@ public class AuthorizationServiceTests extends ESTestCase {
 
         final ShardId shardId = new ShardId(indexName, UUID.randomUUID().toString(), 1);
         try (BulkShardRequest request = new BulkShardRequest(shardId, randomFrom(WriteRequest.RefreshPolicy.values()), items)) {
-
+            for (BulkItemRequest item : items) {
+                item.decRef();
+            }
             mockEmptyMetadata();
             final Authentication authentication;
             final String requestId;
@@ -2957,16 +2961,24 @@ public class AuthorizationServiceTests extends ESTestCase {
 
     public void testAuthorizationOfIndividualIndexAndDeleteBulkItems() {
         final String action = BulkAction.NAME + "[s]";
+        IndexRequest indexRequest1 = new IndexRequest("concrete-index").id("c2");
+        IndexRequest indexRequest2 = new IndexRequest("alias-1").id("a1b");
+        IndexRequest indexRequest3 = new IndexRequest("alias-2").id("a2b");
         final BulkItemRequest[] items = {
             new BulkItemRequest(1, new DeleteRequest("concrete-index", "c1")),
-            new BulkItemRequest(2, new IndexRequest("concrete-index").id("c2")),
+            new BulkItemRequest(2, indexRequest1),
             new BulkItemRequest(3, new DeleteRequest("alias-1", "a1a")),
-            new BulkItemRequest(4, new IndexRequest("alias-1").id("a1b")),
+            new BulkItemRequest(4, indexRequest2),
             new BulkItemRequest(5, new DeleteRequest("alias-2", "a2a")),
-            new BulkItemRequest(6, new IndexRequest("alias-2").id("a2b")) };
+            new BulkItemRequest(6, indexRequest3) };
+        indexRequest1.decRef();
+        indexRequest2.decRef();
+        indexRequest3.decRef();
         final ShardId shardId = new ShardId("concrete-index", UUID.randomUUID().toString(), 1);
         try (BulkShardRequest request = new BulkShardRequest(shardId, WriteRequest.RefreshPolicy.IMMEDIATE, items)) {
-
+            for (BulkItemRequest item : items) {
+                item.decRef();
+            }
             final Authentication authentication = createAuthentication(new User("user", "my-role"));
             RoleDescriptor role = new RoleDescriptor(
                 "my-role",
@@ -3048,15 +3060,21 @@ public class AuthorizationServiceTests extends ESTestCase {
 
     public void testAuthorizationOfIndividualBulkItemsWithDateMath() {
         final String action = BulkAction.NAME + "[s]";
+        IndexRequest indexRequest1 = new IndexRequest("<datemath-{now/M{YYYY}}>").id("dy1");
+        IndexRequest indexRequest2 = new IndexRequest("<datemath-{now/M{YYYY.MM}}>").id("dm1");
         final BulkItemRequest[] items = {
-            new BulkItemRequest(1, new IndexRequest("<datemath-{now/M{YYYY}}>").id("dy1")),
+            new BulkItemRequest(1, indexRequest1),
             new BulkItemRequest(2, new DeleteRequest("<datemath-{now/d{YYYY}}>", "dy2")), // resolves to same as above
-            new BulkItemRequest(3, new IndexRequest("<datemath-{now/M{YYYY.MM}}>").id("dm1")),
+            new BulkItemRequest(3, indexRequest2),
             new BulkItemRequest(4, new DeleteRequest("<datemath-{now/d{YYYY.MM}}>", "dm2")), // resolves to same as above
         };
+        indexRequest1.decRef();
+        indexRequest2.decRef();
         final ShardId shardId = new ShardId("concrete-index", UUID.randomUUID().toString(), 1);
         try (BulkShardRequest request = new BulkShardRequest(shardId, WriteRequest.RefreshPolicy.IMMEDIATE, items)) {
-
+            for (BulkItemRequest item : items) {
+                item.decRef();
+            }
             final Authentication authentication = createAuthentication(new User("user", "my-role"));
             final RoleDescriptor role = new RoleDescriptor(
                 "my-role",
@@ -3109,8 +3127,20 @@ public class AuthorizationServiceTests extends ESTestCase {
     }
 
     private BulkShardRequest createBulkShardRequest(String indexName, BiFunction<String, String, DocWriteRequest<?>> req) {
-        final BulkItemRequest[] items = { new BulkItemRequest(1, req.apply(indexName, "id")) };
-        return new BulkShardRequest(new ShardId(indexName, UUID.randomUUID().toString(), 1), WriteRequest.RefreshPolicy.IMMEDIATE, items);
+        DocWriteRequest<?> docWriteRequest = req.apply(indexName, "id");
+        final BulkItemRequest[] items = { new BulkItemRequest(1, docWriteRequest) };
+        if (docWriteRequest instanceof RefCounted refCounted) {
+            refCounted.decRef();
+        }
+        BulkShardRequest bulkShardRequest = new BulkShardRequest(
+            new ShardId(indexName, UUID.randomUUID().toString(), 1),
+            WriteRequest.RefreshPolicy.IMMEDIATE,
+            items
+        );
+        for (BulkItemRequest item : items) {
+            item.decRef();
+        }
+        return bulkShardRequest;
     }
 
     private static Tuple<String, TransportRequest> randomCompositeRequest() {

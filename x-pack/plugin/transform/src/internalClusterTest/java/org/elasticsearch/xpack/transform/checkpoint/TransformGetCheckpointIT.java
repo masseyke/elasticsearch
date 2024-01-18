@@ -12,6 +12,7 @@ import org.elasticsearch.ElasticsearchTimeoutException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
 import org.elasticsearch.action.admin.indices.stats.IndicesStatsResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.core.TimeValue;
@@ -65,7 +66,12 @@ public class TransformGetCheckpointIT extends TransformSingleNodeTestCase {
         for (int d = 0; d < docsToCreatePerShard; ++d) {
             for (int i = 0; i < indices; ++i) {
                 for (int j = 0; j < shards; ++j) {
-                    prepareIndex(indexNamePrefix + i).setSource("{" + "\"field\":" + j + "}", XContentType.JSON).get();
+                    IndexRequestBuilder indexRequestBuilder = prepareIndex(indexNamePrefix + i).setSource(
+                        "{" + "\"field\":" + j + "}",
+                        XContentType.JSON
+                    );
+                    indexRequestBuilder.get();
+                    indexRequestBuilder.request().decRef();
                 }
             }
         }
@@ -116,9 +122,10 @@ public class TransformGetCheckpointIT extends TransformSingleNodeTestCase {
                 .get();
             for (int j = 0; j < shards; ++j) {
                 for (int d = 0; d < docsToCreatePerShard; ++d) {
-                    client().prepareIndex(indexNamePrefix + i)
-                        .setSource(Strings.format("{ \"field\":%d, \"@timestamp\": %d }", j, 10_000_000 + d + i + j), XContentType.JSON)
-                        .get();
+                    IndexRequestBuilder indexRequestBuilder = client().prepareIndex(indexNamePrefix + i)
+                        .setSource(Strings.format("{ \"field\":%d, \"@timestamp\": %d }", j, 10_000_000 + d + i + j), XContentType.JSON);
+                    indexRequestBuilder.get();
+                    indexRequestBuilder.request().decRef();
                 }
             }
         }

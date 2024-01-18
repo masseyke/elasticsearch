@@ -10,6 +10,7 @@ package org.elasticsearch.action.search;
 
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.common.settings.Settings;
@@ -43,7 +44,10 @@ public class LookupRuntimeFieldIT extends ESIntegTestCase {
             Map.of("author", "jack", "first_name", "Jack", "last_name", "Austin", "joined", "1999-11-03")
         );
         for (Map<String, String> author : authors) {
-            prepareIndex("authors").setSource(author).setRefreshPolicy(randomFrom(WriteRequest.RefreshPolicy.values())).get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("authors").setSource(author)
+                .setRefreshPolicy(randomFrom(WriteRequest.RefreshPolicy.values()));
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
         }
         indicesAdmin().prepareRefresh("authors").get();
 
@@ -51,10 +55,12 @@ public class LookupRuntimeFieldIT extends ESIntegTestCase {
             .setSettings(Settings.builder().put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, between(1, 5)))
             .get();
         try (BulkRequestBuilder bulkBuilder = client().prepareBulk("publishers")) {
-            bulkBuilder.add(new IndexRequest().id("p1").source("name", "The first publisher", "city", List.of("Montreal", "Vancouver")))
-                .add(new IndexRequest().id("p2").source("name", "The second publisher", "city", "Toronto"))
-                .setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE)
-                .get();
+            IndexRequest indexRequest1 = new IndexRequest().id("p1")
+                .source("name", "The first publisher", "city", List.of("Montreal", "Vancouver"));
+            IndexRequest indexRequest2 = new IndexRequest().id("p2").source("name", "The second publisher", "city", "Toronto");
+            bulkBuilder.add(indexRequest1).add(indexRequest2).setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE).get();
+            indexRequest1.decRef();
+            indexRequest2.decRef();
         }
         indicesAdmin().prepareCreate("books").setSettings(Settings.builder().put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)).setMapping("""
             {
@@ -130,7 +136,10 @@ public class LookupRuntimeFieldIT extends ESIntegTestCase {
             Map.of("title", "the fifth book", "genre", "science", "author_id", "mike", "publisher_id", "p2", "published_date", "2021-06-30")
         );
         for (Map<String, Object> book : books) {
-            prepareIndex("books").setSource(book).setRefreshPolicy(randomFrom(WriteRequest.RefreshPolicy.values())).get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("books").setSource(book)
+                .setRefreshPolicy(randomFrom(WriteRequest.RefreshPolicy.values()));
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
         }
         indicesAdmin().prepareRefresh("books").get();
     }

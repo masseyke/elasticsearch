@@ -65,7 +65,9 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
 
         createIndex("test-idx-1");
         logger.info("--> indexing some data");
-        indexRandom(true, prepareIndex("test-idx-1").setSource("foo", "bar"));
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test-idx-1").setSource("foo", "bar");
+        indexRandom(true, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
         final String snapshot = "test-snap";
 
@@ -111,7 +113,11 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
 
         createIndex("test-idx-1", "test-idx-2");
         logger.info("--> indexing some data");
-        indexRandom(true, prepareIndex("test-idx-1").setSource("foo", "bar"), prepareIndex("test-idx-2").setSource("foo", "bar"));
+        IndexRequestBuilder indexRequestBuilder1 = prepareIndex("test-idx-1").setSource("foo", "bar");
+        IndexRequestBuilder indexRequestBuilder2 = prepareIndex("test-idx-2").setSource("foo", "bar");
+        indexRandom(true, indexRequestBuilder1, indexRequestBuilder2);
+        indexRequestBuilder1.request().decRef();
+        indexRequestBuilder2.request().decRef();
 
         final String snapshot = "test-snap";
 
@@ -179,7 +185,11 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
 
         createIndex("test-idx-1", "test-idx-2");
         logger.info("--> indexing some data");
-        indexRandom(true, prepareIndex("test-idx-1").setSource("foo", "bar"), prepareIndex("test-idx-2").setSource("foo", "bar"));
+        IndexRequestBuilder indexRequestBuilder1 = prepareIndex("test-idx-1").setSource("foo", "bar");
+        IndexRequestBuilder indexRequestBuilder2 = prepareIndex("test-idx-2").setSource("foo", "bar");
+        indexRandom(true, indexRequestBuilder1, indexRequestBuilder2);
+        indexRequestBuilder1.request().decRef();
+        indexRequestBuilder2.request().decRef();
 
         final String snapshot = "test-snap";
 
@@ -476,6 +486,9 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
             documents[j] = client.prepareIndex(indexName).setSource("foo", "bar");
         }
         indexRandom(true, documents);
+        for (IndexRequestBuilder builder : documents) {
+            builder.request().decRef();
+        }
         flushAndRefresh();
 
         createRepository("test-repo", "fs", repo);
@@ -522,6 +535,9 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
             documents[j] = client.prepareIndex(indexName).setSource("foo2", "bar2");
         }
         indexRandom(true, documents);
+        for (IndexRequestBuilder builder : documents) {
+            builder.request().decRef();
+        }
 
         final String snapshot2 = "test-snap-2";
         logger.info("-->  creating snapshot [{}]", snapshot2);
@@ -544,7 +560,11 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
         final String[] indices = { "test-idx-1", "test-idx-2" };
         createIndex(indices);
         logger.info("--> indexing some data");
-        indexRandom(true, prepareIndex("test-idx-1").setSource("foo", "bar"), prepareIndex("test-idx-2").setSource("foo", "bar"));
+        IndexRequestBuilder indexRequestBuilder1 = prepareIndex("test-idx-1").setSource("foo", "bar");
+        IndexRequestBuilder indexRequestBuilder2 = prepareIndex("test-idx-2").setSource("foo", "bar");
+        indexRandom(true, indexRequestBuilder1, indexRequestBuilder2);
+        indexRequestBuilder1.request().decRef();
+        indexRequestBuilder2.request().decRef();
 
         logger.info("--> creating snapshot");
         CreateSnapshotResponse createSnapshotResponse = client.admin()
@@ -590,7 +610,11 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
 
         createIndex("test-idx-1", "test-idx-2");
         logger.info("--> indexing some data");
-        indexRandom(true, prepareIndex("test-idx-1").setSource("foo", "bar"), prepareIndex("test-idx-2").setSource("foo", "bar"));
+        IndexRequestBuilder indexRequestBuilder1 = prepareIndex("test-idx-1").setSource("foo", "bar");
+        IndexRequestBuilder indexRequestBuilder2 = prepareIndex("test-idx-2").setSource("foo", "bar");
+        indexRandom(true, indexRequestBuilder1, indexRequestBuilder2);
+        indexRequestBuilder1.request().decRef();
+        indexRequestBuilder2.request().decRef();
 
         logger.info("--> creating snapshot");
         CreateSnapshotResponse createSnapshotResponse = client.admin()
@@ -630,7 +654,11 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
 
         createIndex("test-idx-1", "test-idx-2");
         logger.info("--> indexing some data");
-        indexRandom(true, prepareIndex("test-idx-1").setSource("foo", "bar"), prepareIndex("test-idx-2").setSource("foo", "bar"));
+        IndexRequestBuilder indexRequestBuilder1 = prepareIndex("test-idx-1").setSource("foo", "bar");
+        IndexRequestBuilder indexRequestBuilder2 = prepareIndex("test-idx-2").setSource("foo", "bar");
+        indexRandom(true, indexRequestBuilder1, indexRequestBuilder2);
+        indexRequestBuilder1.request().decRef();
+        indexRequestBuilder2.request().decRef();
 
         logger.info("--> creating snapshot");
         CreateSnapshotResponse createSnapshotResponse = client.admin()
@@ -680,12 +708,13 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
         );
 
         createIndex("test-idx-1", "test-idx-2");
-        indexRandom(
-            true,
-            prepareIndex("test-idx-1").setSource("foo", "bar"),
-            prepareIndex("test-idx-2").setSource("foo", "bar"),
-            prepareIndex("test-idx-2").setSource("foo", "bar")
-        );
+        IndexRequestBuilder indexRequestBuilder1 = prepareIndex("test-idx-1").setSource("foo", "bar");
+        IndexRequestBuilder indexRequestBuilder2 = prepareIndex("test-idx-2").setSource("foo", "bar");
+        IndexRequestBuilder indexRequestBuilder3 = prepareIndex("test-idx-2").setSource("foo", "bar");
+        indexRandom(true, indexRequestBuilder1, indexRequestBuilder2);
+        indexRequestBuilder1.request().decRef();
+        indexRequestBuilder2.request().decRef();
+        indexRequestBuilder3.request().decRef();
         flushAndRefresh("test-idx-1", "test-idx-2");
 
         SnapshotInfo snapshotInfo = createFullSnapshot("test-repo", "test-snap");
@@ -726,7 +755,11 @@ public class CorruptedBlobStoreRepositoryIT extends AbstractSnapshotIntegTestCas
 
         createIndex("test-idx-1", "test-idx-2");
         logger.info("--> indexing some data");
-        indexRandom(true, prepareIndex("test-idx-1").setSource("foo", "bar"), prepareIndex("test-idx-2").setSource("foo", "bar"));
+        IndexRequestBuilder indexRequestBuilder1 = prepareIndex("test-idx-1").setSource("foo", "bar");
+        IndexRequestBuilder indexRequestBuilder2 = prepareIndex("test-idx-2").setSource("foo", "bar");
+        indexRandom(true, indexRequestBuilder1, indexRequestBuilder2);
+        indexRequestBuilder1.request().decRef();
+        indexRequestBuilder2.request().decRef();
 
         logger.info("--> creating snapshot");
         clusterAdmin().prepareCreateSnapshot("test-repo", "test-snap-1").setWaitForCompletion(true).setIndices("test-idx-*").get();

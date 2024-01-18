@@ -11,6 +11,8 @@ import org.elasticsearch.action.DocWriteResponse;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.get.GetResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
+import org.elasticsearch.action.update.UpdateRequestBuilder;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.common.settings.SecureString;
@@ -42,10 +44,7 @@ public class BulkUpdateTests extends SecurityIntegTestCase {
     }
 
     public void testThatBulkUpdateDoesNotLoseFields() {
-        assertEquals(
-            DocWriteResponse.Result.CREATED,
-            prepareIndex("index1").setSource("{\"test\": \"test\"}", XContentType.JSON).setId("1").get().getResult()
-        );
+        assertEquals(DocWriteResponse.Result.CREATED, index("index1", "1", "{\"test\": \"test\"}", XContentType.JSON).getResult());
         GetResponse getResponse = client().prepareGet("index1", "1").get();
         assertEquals("test", getResponse.getSource().get("test"));
 
@@ -54,10 +53,12 @@ public class BulkUpdateTests extends SecurityIntegTestCase {
         }
 
         // update with a new field
+        UpdateRequestBuilder updateRequestBuilder1 = client().prepareUpdate("index1", "1");
         assertEquals(
             DocWriteResponse.Result.UPDATED,
-            client().prepareUpdate("index1", "1").setDoc("{\"not test\": \"not test\"}", XContentType.JSON).get().getResult()
+            updateRequestBuilder1.setDoc("{\"not test\": \"not test\"}", XContentType.JSON).get().getResult()
         );
+        updateRequestBuilder1.request().decRef();
         getResponse = client().prepareGet("index1", "1").get();
         assertEquals("test", getResponse.getSource().get("test"));
         assertEquals("not test", getResponse.getSource().get("not test"));
@@ -68,9 +69,11 @@ public class BulkUpdateTests extends SecurityIntegTestCase {
 
         // do it in a bulk
         try (BulkRequestBuilder bulkRequestBuilder = client().prepareBulk()) {
+            UpdateRequestBuilder updateRequestBuilder2 = client().prepareUpdate("index1", "1");
             BulkResponse response = bulkRequestBuilder.add(
-                client().prepareUpdate("index1", "1").setDoc("{\"bulk updated\": \"bulk updated\"}", XContentType.JSON)
+                updateRequestBuilder2.setDoc("{\"bulk updated\": \"bulk updated\"}", XContentType.JSON)
             ).get();
+            updateRequestBuilder2.request().decRef();
             assertEquals(DocWriteResponse.Result.UPDATED, response.getItems()[0].getResponse().getResult());
             getResponse = client().prepareGet("index1", "1").get();
             assertEquals("test", getResponse.getSource().get("test"));
@@ -130,5 +133,14 @@ public class BulkUpdateTests extends SecurityIntegTestCase {
         assertThat(afterBulk, containsString("\"test\":\"test\""));
         assertThat(afterBulk, containsString("\"not test\":\"not test\""));
         assertThat(afterBulk, containsString("\"bulk updated\":\"bulk updated\""));
+    }
+
+    private DocWriteResponse index(String index, String id, String source, XContentType contentType) {
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index);
+        try {
+            return indexRequestBuilder.setId(id).setSource(source, contentType).get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
     }
 }

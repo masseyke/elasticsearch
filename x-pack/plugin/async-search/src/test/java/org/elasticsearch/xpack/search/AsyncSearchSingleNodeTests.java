@@ -45,7 +45,9 @@ public class AsyncSearchSingleNodeTests extends ESSingleNodeTestCase {
 
     public void testFetchFailuresAllShards() throws Exception {
         for (int i = 0; i < 10; i++) {
-            DocWriteResponse indexResponse = client().index(new IndexRequest("boom" + i).id("boom" + i).source("text", "value")).get();
+            IndexRequest indexRequest = new IndexRequest("boom" + i).id("boom" + i).source("text", "value");
+            DocWriteResponse indexResponse = client().index(indexRequest).get();
+            indexRequest.decRef();
             assertEquals(RestStatus.CREATED, indexResponse.status());
         }
         client().admin().indices().refresh(new RefreshRequest()).get();
@@ -85,11 +87,15 @@ public class AsyncSearchSingleNodeTests extends ESSingleNodeTestCase {
 
     public void testFetchFailuresOnlySomeShards() throws Exception {
         for (int i = 0; i < 5; i++) {
-            DocWriteResponse indexResponse = client().index(new IndexRequest("boom" + i).id("boom" + i).source("text", "value")).get();
+            IndexRequest indexRequest = new IndexRequest("boom" + i).id("boom" + i).source("text", "value");
+            DocWriteResponse indexResponse = client().index(indexRequest).get();
+            indexRequest.decRef();
             assertEquals(RestStatus.CREATED, indexResponse.status());
         }
         for (int i = 0; i < 5; i++) {
-            DocWriteResponse indexResponse = client().index(new IndexRequest("index" + i).id("index" + i).source("text", "value")).get();
+            IndexRequest indexRequest = new IndexRequest("index" + i).id("index" + i).source("text", "value");
+            DocWriteResponse indexResponse = client().index(indexRequest).get();
+            indexRequest.decRef();
             assertEquals(RestStatus.CREATED, indexResponse.status());
         }
         client().admin().indices().refresh(new RefreshRequest()).get();

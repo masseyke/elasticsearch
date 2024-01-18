@@ -496,6 +496,9 @@ public abstract class AbstractSnapshotIntegTestCase extends ESIntegTestCase {
             builders[i] = prepareIndex(index).setId(Integer.toString(i)).setSource("field1", "bar " + i);
         }
         indexRandom(true, builders);
+        for (IndexRequestBuilder builder : builders) {
+            builder.request().decRef();
+        }
         flushAndRefresh(index);
         assertDocCount(index, numdocs);
     }

@@ -12,6 +12,7 @@ import org.elasticsearch.action.ActionRequestValidationException;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.elasticsearch.action.admin.indices.close.CloseIndexRequestBuilder;
 import org.elasticsearch.action.admin.indices.close.CloseIndexResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.support.ActiveShardCount;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.ClusterState;
@@ -113,7 +114,7 @@ public class CloseIndexIT extends ESIntegTestCase {
         createIndex(indexName);
 
         final int nbDocs = randomIntBetween(0, 50);
-        indexRandom(
+        indexRandomAndDecrefRequests(
             randomBoolean(),
             false,
             randomBoolean(),
@@ -132,7 +133,7 @@ public class CloseIndexIT extends ESIntegTestCase {
         createIndex(indexName);
 
         if (randomBoolean()) {
-            indexRandom(
+            indexRandomAndDecrefRequests(
                 randomBoolean(),
                 false,
                 randomBoolean(),
@@ -175,7 +176,7 @@ public class CloseIndexIT extends ESIntegTestCase {
         createIndex(indexName);
 
         final int nbDocs = randomIntBetween(10, 50);
-        indexRandom(
+        indexRandomAndDecrefRequests(
             randomBoolean(),
             false,
             randomBoolean(),
@@ -243,7 +244,7 @@ public class CloseIndexIT extends ESIntegTestCase {
             final String indexName = randomAlphaOfLength(10).toLowerCase(Locale.ROOT);
             createIndex(indexName);
             if (randomBoolean()) {
-                indexRandom(
+                indexRandomAndDecrefRequests(
                     randomBoolean(),
                     false,
                     randomBoolean(),
@@ -347,7 +348,7 @@ public class CloseIndexIT extends ESIntegTestCase {
         createIndex(indexName, 2, 0);
 
         final int nbDocs = randomIntBetween(0, 50);
-        indexRandom(
+        indexRandomAndDecrefRequests(
             randomBoolean(),
             false,
             randomBoolean(),
@@ -372,7 +373,7 @@ public class CloseIndexIT extends ESIntegTestCase {
         createIndex(indexName, indexSettings(1, numberOfReplicas).put("index.routing.rebalance.enable", "none").build());
         int iterations = between(1, 3);
         for (int iter = 0; iter < iterations; iter++) {
-            indexRandom(
+            indexRandomAndDecrefRequests(
                 randomBoolean(),
                 randomBoolean(),
                 randomBoolean(),
@@ -407,7 +408,7 @@ public class CloseIndexIT extends ESIntegTestCase {
             clusterService().state().nodes().getDataNodes().values().stream().map(DiscoveryNode::getName).collect(Collectors.toSet())
         );
         createIndex(indexName, indexSettings(1, 1).put("index.routing.allocation.include._name", String.join(",", dataNodes)).build());
-        indexRandom(
+        indexRandomAndDecrefRequests(
             randomBoolean(),
             randomBoolean(),
             randomBoolean(),
@@ -423,7 +424,9 @@ public class CloseIndexIT extends ESIntegTestCase {
                 Client client = client(dataNodes.get(0));
                 int moreDocs = randomIntBetween(1, 50);
                 for (int i = 0; i < moreDocs; i++) {
-                    client.prepareIndex(indexName).setSource("num", i).get();
+                    IndexRequestBuilder indexRequestBuilder = client.prepareIndex(indexName).setSource("num", i);
+                    indexRequestBuilder.get();
+                    indexRequestBuilder.request().decRef();
                 }
                 assertAcked(indicesAdmin().prepareClose(indexName));
                 return super.onNodeStopped(nodeName);
@@ -448,7 +451,7 @@ public class CloseIndexIT extends ESIntegTestCase {
         final List<String> dataNodes = internalCluster().startDataOnlyNodes(2);
         // allocate shard to first data node
         createIndex(indexName, indexSettings(1, 0).put("index.routing.allocation.include._name", dataNodes.get(0)).build());
-        indexRandom(
+        indexRandomAndDecrefRequests(
             randomBoolean(),
             randomBoolean(),
             randomBoolean(),
@@ -467,7 +470,7 @@ public class CloseIndexIT extends ESIntegTestCase {
         internalCluster().ensureAtLeastNumDataNodes(3);
         final String indexName = "closed_indices_promotion";
         createIndex(indexName, 1, 2);
-        indexRandom(
+        indexRandomAndDecrefRequests(
             randomBoolean(),
             randomBoolean(),
             randomBoolean(),
@@ -496,7 +499,7 @@ public class CloseIndexIT extends ESIntegTestCase {
         final String indexName = "test_commit_id";
         final int numberOfShards = randomIntBetween(1, 5);
         createIndex(indexName, numberOfShards, 0);
-        indexRandom(
+        indexRandomAndDecrefRequests(
             randomBoolean(),
             randomBoolean(),
             randomBoolean(),
@@ -631,6 +634,21 @@ public class CloseIndexIT extends ESIntegTestCase {
         for (RecoveryState recovery : indicesAdmin().prepareRecoveries(indexName).get().shardRecoveryStates().get(indexName)) {
             if (recovery.getPrimary() == false) {
                 assertThat(recovery.getIndex().fileDetails(), empty());
+            }
+        }
+    }
+
+    private void indexRandomAndDecrefRequests(
+        boolean forceRefresh,
+        boolean dummyDocuments,
+        boolean maybeFlush,
+        List<IndexRequestBuilder> builders
+    ) throws InterruptedException {
+        try {
+            indexRandom(forceRefresh, dummyDocuments, maybeFlush, builders);
+        } finally {
+            for (IndexRequestBuilder builder : builders) {
+                builder.request().decRef();
             }
         }
     }

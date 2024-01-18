@@ -13,6 +13,7 @@ import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.action.ActionFuture;
 import org.elasticsearch.action.admin.cluster.node.tasks.list.ListTasksResponse;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.search.SearchPhaseExecutionException;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.search.ShardSearchFailure;
@@ -74,7 +75,13 @@ public class AbstractSearchCancellationTestCase extends ESIntegTestCase {
             // Make sure we have a few segments
             try (BulkRequestBuilder bulkRequestBuilder = client().prepareBulk().setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE)) {
                 for (int j = 0; j < 20; j++) {
-                    bulkRequestBuilder.add(prepareIndex("test").setId(Integer.toString(i * 5 + j)).setSource("field", "value"));
+                    IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId(Integer.toString(i * 5 + j))
+                        .setSource("field", "value");
+                    try {
+                        bulkRequestBuilder.add(indexRequestBuilder);
+                    } finally {
+                        indexRequestBuilder.request().decRef();
+                    }
                 }
                 assertNoFailures(bulkRequestBuilder.get());
             }

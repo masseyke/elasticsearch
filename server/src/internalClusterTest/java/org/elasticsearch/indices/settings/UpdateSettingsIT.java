@@ -8,9 +8,9 @@
 
 package org.elasticsearch.indices.settings;
 
-import org.elasticsearch.action.ActionRequestBuilder;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.elasticsearch.action.admin.indices.settings.get.GetSettingsResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.service.ClusterService;
@@ -375,14 +375,18 @@ public class UpdateSettingsIT extends ESIntegTestCase {
 
     public void testEngineGCDeletesSetting() throws Exception {
         createIndex("test");
-        prepareIndex("test").setId("1").setSource("f", 1).setVersionType(VersionType.EXTERNAL).setVersion(1).get();
-        client().prepareDelete("test", "1").setVersionType(VersionType.EXTERNAL).setVersion(2).get();
-        // delete is still in cache this should fail
-        ActionRequestBuilder<?, ?> builder = prepareIndex("test").setId("1")
-            .setSource("f", 3)
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1")
+            .setSource("f", 1)
             .setVersionType(VersionType.EXTERNAL)
             .setVersion(1);
-        expectThrows(VersionConflictEngineException.class, builder);
+        indexRequestBuilder.get();
+        indexRequestBuilder.request().decRef();
+        client().prepareDelete("test", "1").setVersionType(VersionType.EXTERNAL).setVersion(2).get();
+        // delete is still in cache this should fail
+        indexRequestBuilder = prepareIndex("test").setId("1").setSource("f", 3).setVersionType(VersionType.EXTERNAL).setVersion(1);
+        ;
+        expectThrows(VersionConflictEngineException.class, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
         assertAcked(indicesAdmin().prepareUpdateSettings("test").setSettings(Settings.builder().put("index.gc_deletes", 0)));
 
@@ -395,7 +399,9 @@ public class UpdateSettingsIT extends ESIntegTestCase {
         }
 
         // delete should not be in cache
-        prepareIndex("test").setId("1").setSource("f", 2).setVersionType(VersionType.EXTERNAL).setVersion(1);
+        indexRequestBuilder = prepareIndex("test").setId("1").setSource("f", 2).setVersionType(VersionType.EXTERNAL).setVersion(1);
+        indexRequestBuilder.get();
+        indexRequestBuilder.request().decRef();
     }
 
     public void testUpdateSettingsWithBlocks() {

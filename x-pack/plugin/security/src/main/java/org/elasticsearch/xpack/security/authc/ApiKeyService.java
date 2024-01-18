@@ -28,6 +28,7 @@ import org.elasticsearch.action.bulk.TransportBulkAction;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.TransportSearchAction;
@@ -431,13 +432,14 @@ public class ApiKeyService {
                 )
             ) {
                 final BulkRequestBuilder bulkRequestBuilder = client.prepareBulk();
-                bulkRequestBuilder.add(
-                    client.prepareIndex(SECURITY_MAIN_ALIAS)
-                        .setSource(builder)
-                        .setId(request.getId())
-                        .setOpType(DocWriteRequest.OpType.CREATE)
-                        .request()
-                );
+                IndexRequestBuilder indexRequestBuilder = client.prepareIndex(SECURITY_MAIN_ALIAS);
+                try {
+                    bulkRequestBuilder.add(
+                        indexRequestBuilder.setSource(builder).setId(request.getId()).setOpType(DocWriteRequest.OpType.CREATE).request()
+                    );
+                } finally {
+                    indexRequestBuilder.request().decRef();
+                }
                 bulkRequestBuilder.setRefreshPolicy(request.getRefreshPolicy());
                 final BulkRequest bulkRequest = bulkRequestBuilder.request();
 
@@ -555,7 +557,11 @@ public class ApiKeyService {
                         logger.debug("Detected noop update request for API key [{}]. Skipping index request", apiKeyId);
                         responseBuilder.noop(apiKeyId);
                     } else {
-                        bulkRequestBuilder.add(indexRequest);
+                        try {
+                            bulkRequestBuilder.add(indexRequest);
+                        } finally {
+                            indexRequest.decRef();
+                        }
                     }
                 } catch (Exception ex) {
                     responseBuilder.error(apiKeyId, traceLog("prepare index request for update", ex));
@@ -1699,6 +1705,7 @@ public class ApiKeyService {
                     .setDoc(Map.of("api_key_invalidated", true, "invalidation_time", invalidationTime))
                     .request();
                 bulkRequestBuilder.add(request);
+                request.decRef();
             }
             bulkRequestBuilder.setRefreshPolicy(defaultCreateDocRefreshPolicy(settings));
             securityIndex.prepareIndexIfNeededThenExecute(

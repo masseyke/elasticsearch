@@ -147,6 +147,7 @@ public class UpdateRequestTests extends ESTestCase {
         assertThat(script.getLang(), equalTo(Script.DEFAULT_SCRIPT_LANG));
         params = script.getParams();
         assertThat(params, equalTo(emptyMap()));
+        request.decRef();
 
         // script with params
         request = new UpdateRequest("test", "1");
@@ -174,6 +175,7 @@ public class UpdateRequestTests extends ESTestCase {
         assertThat(params, notNullValue());
         assertThat(params.size(), equalTo(1));
         assertThat(params.get("param1").toString(), equalTo("value1"));
+        request.decRef();
 
         request = new UpdateRequest("test", "1");
         try (
@@ -200,6 +202,7 @@ public class UpdateRequestTests extends ESTestCase {
         assertThat(params, notNullValue());
         assertThat(params.size(), equalTo(1));
         assertThat(params.get("param1").toString(), equalTo("value1"));
+        request.decRef();
 
         // script with params and upsert
         request = new UpdateRequest("test", "1");
@@ -240,6 +243,7 @@ public class UpdateRequestTests extends ESTestCase {
         ).v2();
         assertThat(upsertDoc.get("field1").toString(), equalTo("value1"));
         assertThat(((Map<String, Object>) upsertDoc.get("compound")).get("field2").toString(), equalTo("value2"));
+        request.decRef();
 
         request = new UpdateRequest("test", "1");
         try (
@@ -275,6 +279,7 @@ public class UpdateRequestTests extends ESTestCase {
         upsertDoc = XContentHelper.convertToMap(request.upsertRequest().source(), true, request.upsertRequest().getContentType()).v2();
         assertThat(upsertDoc.get("field1").toString(), equalTo("value1"));
         assertThat(((Map<String, Object>) upsertDoc.get("compound")).get("field2").toString(), equalTo("value2"));
+        request.decRef();
 
         // script with doc
         request = new UpdateRequest("test", "1");
@@ -296,6 +301,7 @@ public class UpdateRequestTests extends ESTestCase {
         Map<String, Object> doc = request.doc().sourceAsMap();
         assertThat(doc.get("field1").toString(), equalTo("value1"));
         assertThat(((Map<String, Object>) doc.get("compound")).get("field2").toString(), equalTo("value2"));
+        request.decRef();
     }
 
     public void testUnknownFieldParsing() throws Exception {
@@ -308,6 +314,7 @@ public class UpdateRequestTests extends ESTestCase {
             XContentParseException ex = expectThrows(XContentParseException.class, () -> request.fromXContent(contentParser));
             assertEquals("[1:2] [UpdateRequest] unknown field [unknown_field]", ex.getMessage());
         }
+        request.decRef();
 
         UpdateRequest request2 = new UpdateRequest("test", "1");
         try (
@@ -324,6 +331,7 @@ public class UpdateRequestTests extends ESTestCase {
             XContentParseException ex = expectThrows(XContentParseException.class, () -> request2.fromXContent(unknownObject));
             assertEquals("[1:76] [UpdateRequest] unknown field [params]", ex.getMessage());
         }
+        request2.decRef();
     }
 
     public void testFetchSourceParsing() throws Exception {
@@ -364,6 +372,7 @@ public class UpdateRequestTests extends ESTestCase {
         assertThat(request.fetchSource().excludes().length, equalTo(1));
         assertThat(request.fetchSource().includes()[0], equalTo("path.inner.*"));
         assertThat(request.fetchSource().excludes()[0], equalTo("another.inner.*"));
+        request.decRef();
     }
 
     public void testNowInScript() throws IOException {
@@ -382,13 +391,17 @@ public class UpdateRequestTests extends ESTestCase {
             assertThat(action, instanceOf(IndexRequest.class));
             IndexRequest indexAction = (IndexRequest) action;
             assertEquals(nowInMillis, indexAction.sourceAsMap().get("update_timestamp"));
+            indexAction.decRef();
+            updateRequest.decRef();
         }
+        indexRequest.decRef();
     }
 
     public void testIndexTimeout() {
         final GetResult getResult = new GetResult("test", "1", 0, 1, 0, true, new BytesArray("{\"f\":\"v\"}"), null, null);
         final UpdateRequest updateRequest = new UpdateRequest("test", "1").script(mockInlineScript("return")).timeout(randomTimeValue());
         runTimeoutTest(getResult, updateRequest);
+        updateRequest.decRef();
     }
 
     public void testDeleteTimeout() {
@@ -396,6 +409,7 @@ public class UpdateRequestTests extends ESTestCase {
         final UpdateRequest updateRequest = new UpdateRequest("test", "1").script(mockInlineScript("ctx.op = 'delete'"))
             .timeout(randomTimeValue());
         runTimeoutTest(getResult, updateRequest);
+        updateRequest.decRef();
     }
 
     public void testUpsertTimeout() throws IOException {
@@ -413,6 +427,8 @@ public class UpdateRequestTests extends ESTestCase {
             .script(mockInlineScript("return"))
             .timeout(randomTimeValue());
         runTimeoutTest(getResult, updateRequest);
+        upsert.decRef();
+        updateRequest.decRef();
     }
 
     private void runTimeoutTest(final GetResult getResult, final UpdateRequest updateRequest) {
@@ -426,6 +442,9 @@ public class UpdateRequestTests extends ESTestCase {
         assertThat(action, instanceOf(ReplicationRequest.class));
         final ReplicationRequest<?> request = (ReplicationRequest<?>) action;
         assertThat(request.timeout(), equalTo(updateRequest.timeout()));
+        if (action != updateRequest.upsertRequest()) {
+            request.decRef();
+        }
     }
 
     public void testToAndFromXContent() throws IOException {
@@ -435,7 +454,9 @@ public class UpdateRequestTests extends ESTestCase {
         if (randomBoolean()) {
             XContentType xContentType = randomFrom(XContentType.values());
             BytesReference source = RandomObjects.randomSource(random(), xContentType);
-            updateRequest.doc(new IndexRequest().source(source, xContentType));
+            IndexRequest indexRequest = new IndexRequest().source(source, xContentType);
+            updateRequest.doc(indexRequest);
+            indexRequest.decRef();
             updateRequest.docAsUpsert(randomBoolean());
         } else {
             ScriptType scriptType = randomFrom(ScriptType.values());
@@ -452,7 +473,9 @@ public class UpdateRequestTests extends ESTestCase {
         if (randomBoolean()) {
             XContentType xContentType = randomFrom(XContentType.values());
             BytesReference source = RandomObjects.randomSource(random(), xContentType);
-            updateRequest.upsert(new IndexRequest().source(source, xContentType));
+            IndexRequest indexRequest = new IndexRequest().source(source, xContentType);
+            updateRequest.upsert(indexRequest);
+            indexRequest.decRef();
         }
         if (randomBoolean()) {
             if (randomBoolean()) {
@@ -475,6 +498,7 @@ public class UpdateRequestTests extends ESTestCase {
         XContentType xContentType = randomFrom(XContentType.values());
         boolean humanReadable = randomBoolean();
         BytesReference originalBytes = toShuffledXContent(updateRequest, xContentType, ToXContent.EMPTY_PARAMS, humanReadable);
+        updateRequest.decRef();
 
         if (randomBoolean()) {
             try (XContentParser parser = createParser(xContentType.xContent(), originalBytes)) {
@@ -496,6 +520,7 @@ public class UpdateRequestTests extends ESTestCase {
 
         BytesReference finalBytes = toXContent(parsedUpdateRequest, xContentType, humanReadable);
         assertToXContentEquivalent(originalBytes, finalBytes, xContentType);
+        parsedUpdateRequest.decRef();
     }
 
     public void testToValidateUpsertRequestAndCAS() {
@@ -503,18 +528,24 @@ public class UpdateRequestTests extends ESTestCase {
         updateRequest.setIfSeqNo(1L);
         updateRequest.setIfPrimaryTerm(1L);
         updateRequest.doc("{}", XContentType.JSON);
-        updateRequest.upsert(new IndexRequest("index").id("id"));
+        IndexRequest indexRequest = new IndexRequest("index").id("id");
+        updateRequest.upsert(indexRequest);
         assertThat(
             updateRequest.validate().validationErrors(),
             contains("upsert requests don't support `if_seq_no` and `if_primary_term`")
         );
+        indexRequest.decRef();
+        updateRequest.decRef();
     }
 
     public void testToValidateUpsertRequestWithVersion() {
         UpdateRequest updateRequest = new UpdateRequest("index", "id");
         updateRequest.doc("{}", XContentType.JSON);
-        updateRequest.upsert(new IndexRequest("index").id("1").version(1L));
+        IndexRequest indexRequest = new IndexRequest("index").id("1").version(1L);
+        updateRequest.upsert(indexRequest);
         assertThat(updateRequest.validate().validationErrors(), contains("can't provide version in upsert request"));
+        indexRequest.decRef();
+        updateRequest.decRef();
     }
 
     public void testUpdatingRejectsLongIds() {
@@ -522,18 +553,21 @@ public class UpdateRequestTests extends ESTestCase {
         UpdateRequest request = new UpdateRequest("index", id);
         request.doc("{}", XContentType.JSON);
         ActionRequestValidationException validate = request.validate();
+        request.decRef();
         assertNull(validate);
 
         id = randomAlphaOfLength(512);
         request = new UpdateRequest("index", id);
         request.doc("{}", XContentType.JSON);
         validate = request.validate();
+        request.decRef();
         assertNull(validate);
 
         id = randomAlphaOfLength(513);
         request = new UpdateRequest("index", id);
         request.doc("{}", XContentType.JSON);
         validate = request.validate();
+        request.decRef();
         assertThat(validate, notNullValue());
         assertThat(validate.getMessage(), containsString("id [" + id + "] is too long, must be no longer than 512 bytes but was: 513"));
     }
@@ -545,6 +579,7 @@ public class UpdateRequestTests extends ESTestCase {
             ActionRequestValidationException validate = request.validate();
 
             assertThat(validate, nullValue());
+            request.decRef();
         }
         {
             UpdateRequest request = new UpdateRequest("index", null);
@@ -553,6 +588,7 @@ public class UpdateRequestTests extends ESTestCase {
 
             assertThat(validate, not(nullValue()));
             assertThat(validate.validationErrors(), hasItems("id is missing"));
+            request.decRef();
         }
     }
 
@@ -580,6 +616,7 @@ public class UpdateRequestTests extends ESTestCase {
 
         // Use the get result parent and routing
         assertThat(UpdateHelper.calculateRouting(getResult, indexRequest), equalTo("routing1"));
+        indexRequest.decRef();
     }
 
     public void testNoopDetection() throws Exception {
@@ -601,6 +638,8 @@ public class UpdateRequestTests extends ESTestCase {
         assertThat(result.action(), instanceOf(IndexRequest.class));
         assertThat(result.getResponseResult(), equalTo(DocWriteResponse.Result.UPDATED));
         assertThat(result.updatedSourceAsMap().get("body").toString(), equalTo("foo"));
+        request.decRef();
+        ((IndexRequest) result.action()).decRef();
 
         try (var parser = createParser(JsonXContent.jsonXContent, new BytesArray("{\"doc\": {\"body\": \"bar\"}}"))) {
             // Change the request to be a different doc
@@ -610,6 +649,8 @@ public class UpdateRequestTests extends ESTestCase {
             assertThat(result.action(), instanceOf(IndexRequest.class));
             assertThat(result.getResponseResult(), equalTo(DocWriteResponse.Result.UPDATED));
             assertThat(result.updatedSourceAsMap().get("body").toString(), equalTo("bar"));
+            request.decRef();
+            ((IndexRequest) result.action()).decRef();
         }
 
     }
@@ -630,11 +671,14 @@ public class UpdateRequestTests extends ESTestCase {
         assertThat(result.action(), instanceOf(IndexRequest.class));
         assertThat(result.getResponseResult(), equalTo(DocWriteResponse.Result.UPDATED));
         assertThat(result.updatedSourceAsMap().get("body").toString(), equalTo("foo"));
+        request.decRef();
+        ((IndexRequest) result.action()).decRef();
 
         // Now where the script changes the op to "delete"
         request = new UpdateRequest("test", "1").script(mockInlineScript("ctx.op = 'delete'"));
 
         result = updateHelper.prepareUpdateScriptRequest(shardId, request, getResult, ESTestCase::randomNonNegativeLong);
+        request.decRef();
 
         assertThat(result.action(), instanceOf(DeleteRequest.class));
         assertThat(result.getResponseResult(), equalTo(DocWriteResponse.Result.DELETED));
@@ -648,6 +692,7 @@ public class UpdateRequestTests extends ESTestCase {
         }
 
         result = updateHelper.prepareUpdateScriptRequest(shardId, request, getResult, ESTestCase::randomNonNegativeLong);
+        request.decRef();
 
         assertThat(result.action(), instanceOf(UpdateResponse.class));
         assertThat(result.getResponseResult(), equalTo(DocWriteResponse.Result.NOOP));
@@ -658,11 +703,13 @@ public class UpdateRequestTests extends ESTestCase {
         assertThat(request.toString(), equalTo("""
             update {[test][1], doc_as_upsert[false], script[Script{type=inline, lang='mock', idOrCode='ctx._source.body = "foo"', \
             options={}, params={}}], scripted_upsert[false], detect_noop[true]}"""));
+        request.decRef();
         try (var parser = createParser(JsonXContent.jsonXContent, new BytesArray("{\"doc\": {\"body\": \"bar\"}}"))) {
             request = new UpdateRequest("test", "1").fromXContent(parser);
             assertThat(request.toString(), equalTo("""
                 update {[test][1], doc_as_upsert[false], doc[index {[null][null], source[{"body":"bar"}]}], \
                 scripted_upsert[false], detect_noop[true]}"""));
+            request.decRef();
         }
     }
 }

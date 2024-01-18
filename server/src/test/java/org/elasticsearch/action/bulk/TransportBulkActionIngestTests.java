@@ -61,6 +61,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
@@ -245,6 +246,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
             IndexRequest indexRequest = new IndexRequest("index").id("id");
             indexRequest.source(Collections.emptyMap());
             bulkRequest.add(indexRequest);
+            indexRequest.decRef();
             ActionTestUtils.execute(action, null, bulkRequest, ActionTestUtils.assertNoFailureListener(response -> {}));
             assertTrue(action.isExecuted);
             verifyNoMoreInteractions(ingestService);
@@ -257,6 +259,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
         ActionTestUtils.execute(singleItemBulkWriteAction, null, indexRequest, ActionTestUtils.assertNoFailureListener(response -> {}));
         assertTrue(action.isExecuted);
         verifyNoMoreInteractions(ingestService);
+        indexRequest.decRef();
     }
 
     public void testIngestLocal() throws Exception {
@@ -270,6 +273,8 @@ public class TransportBulkActionIngestTests extends ESTestCase {
             indexRequest2.setPipeline("testpipeline");
             bulkRequest.add(indexRequest1);
             bulkRequest.add(indexRequest2);
+            indexRequest1.decRef();
+            indexRequest2.decRef();
 
             AtomicBoolean responseCalled = new AtomicBoolean(false);
             AtomicBoolean failureCalled = new AtomicBoolean(false);
@@ -382,6 +387,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
         assertTrue(action.isExecuted);
         assertTrue(responseCalled.get());
         verifyNoMoreInteractions(transportService);
+        indexRequest.decRef();
     }
 
     public void testIngestSystemLocal() throws Exception {
@@ -395,6 +401,8 @@ public class TransportBulkActionIngestTests extends ESTestCase {
             indexRequest2.setPipeline("testpipeline");
             bulkRequest.add(indexRequest1);
             bulkRequest.add(indexRequest2);
+            indexRequest1.decRef();
+            indexRequest2.decRef();
 
             AtomicBoolean responseCalled = new AtomicBoolean(false);
             AtomicBoolean failureCalled = new AtomicBoolean(false);
@@ -458,13 +466,16 @@ public class TransportBulkActionIngestTests extends ESTestCase {
             indexRequest.source(Collections.emptyMap());
             indexRequest.setPipeline("testpipeline");
             bulkRequest.add(indexRequest);
+            indexRequest.decRef();
             BulkResponse bulkResponse = mock(BulkResponse.class);
             AtomicBoolean responseCalled = new AtomicBoolean(false);
             ActionListener<BulkResponse> listener = ActionTestUtils.assertNoFailureListener(response -> {
                 responseCalled.set(true);
                 assertSame(bulkResponse, response);
             });
-            ActionTestUtils.execute(action, null, bulkRequest, listener);
+            // We're going to use the same bulk request twice, so we want to know when we're done with it:
+            CountDownLatch executionLatch = new CountDownLatch(2);
+            ActionTestUtils.execute(action, null, bulkRequest, ActionListener.runAfter(listener, executionLatch::countDown));
 
             // should not have executed ingest locally
             verify(ingestService, never()).executeBulkRequest(anyInt(), any(), any(), any(), any(), any());
@@ -484,13 +495,15 @@ public class TransportBulkActionIngestTests extends ESTestCase {
 
             // now make sure ingest nodes are rotated through with a subsequent request
             reset(transportService);
-            ActionTestUtils.execute(action, null, bulkRequest, listener);
+            ActionTestUtils.execute(action, null, bulkRequest, ActionListener.runAfter(listener, executionLatch::countDown));
             verify(transportService).sendRequest(node.capture(), eq(BulkAction.NAME), any(), remoteResponseHandler.capture());
             if (usedNode1) {
                 assertSame(remoteNode2, node.getValue());
             } else {
                 assertSame(remoteNode1, node.getValue());
             }
+            remoteResponseHandler.getValue().handleResponse(bulkResponse); // call the listener for the remote node
+            executionLatch.await();
         }
     }
 
@@ -544,14 +557,25 @@ public class TransportBulkActionIngestTests extends ESTestCase {
          * not using the real TransportService that would do this for us).
          */
         remoteResponseHandler.getValue().handleException(exception);
+        indexRequest.decRef();
     }
 
     public void testUseDefaultPipeline() throws Exception {
-        validateDefaultPipeline(new IndexRequest(WITH_DEFAULT_PIPELINE).id("id"));
+        IndexRequest indexRequest = new IndexRequest(WITH_DEFAULT_PIPELINE).id("id");
+        try {
+            validateDefaultPipeline(indexRequest);
+        } finally {
+            indexRequest.decRef();
+        }
     }
 
     public void testUseDefaultPipelineWithAlias() throws Exception {
-        validateDefaultPipeline(new IndexRequest(WITH_DEFAULT_PIPELINE_ALIAS).id("id"));
+        IndexRequest indexRequest = new IndexRequest(WITH_DEFAULT_PIPELINE_ALIAS).id("id");
+        try {
+            validateDefaultPipeline(indexRequest);
+        } finally {
+            indexRequest.decRef();
+        }
     }
 
     public void testUseDefaultPipelineWithBulkUpsert() throws Exception {
@@ -578,6 +602,9 @@ public class TransportBulkActionIngestTests extends ESTestCase {
                 .script(mockScript("1"))
                 .scriptedUpsert(true);
             bulkRequest.add(upsertRequest).add(docAsUpsertRequest).add(scriptedUpsert);
+            scriptedUpsert.decRef();
+            docAsUpsertRequest.decRef();
+            upsertRequest.decRef();
 
             AtomicBoolean responseCalled = new AtomicBoolean(false);
             AtomicBoolean failureCalled = new AtomicBoolean(false);
@@ -639,6 +666,9 @@ public class TransportBulkActionIngestTests extends ESTestCase {
             assertTrue(action.isExecuted);
             assertTrue(responseCalled.get());
             verifyNoMoreInteractions(transportService);
+            indexRequest1.decRef();
+            indexRequest2.decRef();
+            indexRequest3.decRef();
         }
     }
 
@@ -703,6 +733,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
         assertTrue(action.indexCreated); // now the index is created since we skipped the ingest node path.
         assertTrue(responseCalled.get());
         verifyNoMoreInteractions(transportService);
+        indexRequest.decRef();
     }
 
     public void testNotFindDefaultPipelineFromTemplateMatches() {
@@ -722,6 +753,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
         );
         assertEquals(IngestService.NOOP_PIPELINE_NAME, indexRequest.getPipeline());
         verifyNoMoreInteractions(ingestService);
+        indexRequest.decRef();
 
     }
 
@@ -792,6 +824,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
          */
         completionHandler.getValue().accept(DUMMY_WRITE_THREAD, exception);
         verifyNoMoreInteractions(transportService);
+        indexRequest.decRef();
     }
 
     public void testFindDefaultPipelineFromV2TemplateMatch() {
@@ -831,6 +864,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
             eq(Names.WRITE)
         );
         completionHandler.getValue().accept(DUMMY_WRITE_THREAD, exception);
+        indexRequest.decRef();
     }
 
     public void testIngestCallbackExceptionHandled() throws Exception {
@@ -865,6 +899,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
             assertFalse(action.isExecuted);
             assertFalse(responseCalled.get());
             assertTrue(failureCalled.get());
+            indexRequest1.decRef();
         }
     }
 

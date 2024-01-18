@@ -69,7 +69,7 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
             .endObject();
         assertAcked(prepareCreate("test").addAlias(new Alias("alias")).setMapping(mapping));
 
-        prepareIndex("test").setId("666").setSource("field", "foo bar").get();
+        indexDoc("test", "666", "field", "foo bar");
         refresh();
         for (int i = 0; i < 20; i++) {
             ActionFuture<TermVectorsResponse> termVector = client().termVectors(new TermVectorsRequest(indexOrAlias(), "" + i));
@@ -96,7 +96,7 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         assertAcked(prepareCreate("test").addAlias(new Alias("alias")).setMapping(mapping));
 
         // when indexing a field that simply has a question mark, the term vectors will be null
-        prepareIndex("test").setId("0").setSource("existingfield", "?").get();
+        indexDoc("test", "0", "existingfield", "?");
         refresh();
         ActionFuture<TermVectorsResponse> termVector = client().termVectors(
             new TermVectorsRequest(indexOrAlias(), "0").selectedFields(new String[] { "existingfield" })
@@ -124,7 +124,7 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         assertAcked(prepareCreate("test").addAlias(new Alias("alias")).setMapping(mapping));
 
         // when indexing a field that simply has a question mark, the term vectors will be null
-        prepareIndex("test").setId("0").setSource("anotherexistingfield", 1).get();
+        indexDoc("test", "0", "anotherexistingfield", 1);
         refresh();
         ActionFuture<TermVectorsResponse> termVectors = client().termVectors(
             new TermVectorsRequest(indexOrAlias(), "0").selectedFields(randomBoolean() ? new String[] { "existingfield" } : null)
@@ -165,6 +165,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
             indexBuilders.add(prepareIndex("test").setId(String.valueOf(i)).setSource("field" + i, i));
         }
         indexRandom(true, indexBuilders);
+        for (IndexRequestBuilder indexRequestBuilder : indexBuilders) {
+            indexRequestBuilder.request().decRef();
+        }
 
         for (int i = 0; i < 4; i++) {
             TermVectorsResponse resp = client().prepareTermVectors(indexOrAlias(), String.valueOf(i)).setSelectedFields("field" + i).get();
@@ -204,15 +207,15 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
                 )
         );
         for (int i = 0; i < 10; i++) {
-            prepareIndex("test").setId(Integer.toString(i))
-                .setSource(
-                    jsonBuilder().startObject()
-                        .field("field", "the quick brown fox jumps over the lazy dog")
-                        // 0the3 4quick9 10brown15 16fox19 20jumps25 26over30
-                        // 31the34 35lazy39 40dog43
-                        .endObject()
-                )
-                .get();
+            index(
+                "test",
+                Integer.toString(i),
+                jsonBuilder().startObject()
+                    .field("field", "the quick brown fox jumps over the lazy dog")
+                    // 0the3 4quick9 10brown15 16fox19 20jumps25 26over30
+                    // 31the34 35lazy39 40dog43
+                    .endObject()
+            );
             refresh();
         }
         for (int i = 0; i < 10; i++) {
@@ -305,15 +308,15 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
                 )
         );
         for (int i = 0; i < 10; i++) {
-            prepareIndex("test").setId(Integer.toString(i))
-                .setSource(
-                    jsonBuilder().startObject()
-                        .field("field", "the quick brown fox jumps over the lazy dog")
-                        // 0the3 4quick9 10brown15 16fox19 20jumps25 26over30
-                        // 31the34 35lazy39 40dog43
-                        .endObject()
-                )
-                .get();
+            index(
+                "test",
+                Integer.toString(i),
+                jsonBuilder().startObject()
+                    .field("field", "the quick brown fox jumps over the lazy dog")
+                    // 0the3 4quick9 10brown15 16fox19 20jumps25 26over30
+                    // 31the34 35lazy39 40dog43
+                    .endObject()
+            );
             refresh();
         }
         String[] values = { "brown", "dog", "fox", "jumps", "lazy", "over", "quick", "the" };
@@ -465,7 +468,7 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         ensureGreen();
 
         for (int i = 0; i < 10; i++) {
-            prepareIndex("test").setId(Integer.toString(i)).setSource(source).get();
+            index("test", Integer.toString(i), source);
             refresh();
         }
 
@@ -549,6 +552,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
             }
         }
         indexRandom(true, indexBuilders);
+        for (IndexRequestBuilder indexRequestBuilder : indexBuilders) {
+            indexRequestBuilder.request().decRef();
+        }
 
         // request tvs and compare from each index
         for (int id = 0; id < content.length; id++) {
@@ -622,7 +628,7 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         assertAcked(prepareCreate("test").addAlias(new Alias("alias")).setMapping(mapping));
         ensureGreen();
 
-        prepareIndex("test").setId("0").setSource(source).get();
+        index("test", "0", source);
         refresh();
 
         TermVectorsResponse response = client().prepareTermVectors(indexOrAlias(), "0").setSelectedFields("field*").get();
@@ -649,6 +655,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
             indexBuilders.add(prepareIndex("test").setId(String.valueOf(i)).setSource("field1", content[i]));
         }
         indexRandom(true, indexBuilders);
+        for (IndexRequestBuilder indexRequestBuilder : indexBuilders) {
+            indexRequestBuilder.request().decRef();
+        }
 
         for (int i = 0; i < content.length; i++) {
             // request tvs from existing document
@@ -734,7 +743,7 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         ensureGreen();
 
         // index a single document with prepared source
-        prepareIndex("test").setId("0").setSource(source).get();
+        index("test", "0", source);
         refresh();
 
         // create random per_field_analyzer and selected fields
@@ -808,7 +817,7 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         assertThat(response.isExists(), equalTo(false));
 
         logger.info("--> index doc 1");
-        prepareIndex("test").setId("1").setSource("field1", "value1", "field2", "value2").get();
+        indexDoc("test", "1", "field1", "value1", "field2", "value2");
 
         // From translog:
 
@@ -854,7 +863,7 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         }
 
         logger.info("--> index doc 1 again, so increasing the version");
-        prepareIndex("test").setId("1").setSource("field1", "value1", "field2", "value2").get();
+        indexDoc("test", "1", "field1", "value1", "field2", "value2");
 
         // From translog:
 
@@ -917,7 +926,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
             }
             tags.add(tag);
         }
-        indexRandom(true, prepareIndex("test").setId("1").setSource("tags", tags));
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("tags", tags);
+        indexRandom(true, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
         logger.info("Checking best tags by longest to shortest size ...");
         TermVectorsRequest.FilterSettings filterSettings = new TermVectorsRequest.FilterSettings();
@@ -953,7 +964,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
             }
             uniqueTags.add(tag);
         }
-        indexRandom(true, prepareIndex("test").setId("1").setSource("tags", tags));
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("tags", tags);
+        indexRandom(true, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
         logger.info("Checking best tags by highest to lowest term freq ...");
         TermVectorsRequest.FilterSettings filterSettings = new TermVectorsRequest.FilterSettings();
@@ -987,6 +1000,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
             builders.add(prepareIndex("test").setId(i + "").setSource("tags", tags));
         }
         indexRandom(true, builders);
+        for (IndexRequestBuilder builder : builders) {
+            builder.request().decRef();
+        }
 
         logger.info("Checking best terms by highest to lowest idf ...");
         TermVectorsRequest.FilterSettings filterSettings = new TermVectorsRequest.FilterSettings();
@@ -1010,7 +1026,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         ensureGreen();
 
         // index document
-        indexRandom(true, prepareIndex("test").setId("1").setSource("field1", "random permutation"));
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("field1", "random permutation");
+        indexRandom(true, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
         // Get search shards
         ClusterSearchShardsResponse searchShardsResponse = clusterAdmin().prepareSearchShards("test").get();
@@ -1046,7 +1064,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
         ensureGreen();
 
         // add a doc with a bad long field
-        indexRandom(true, prepareIndex("index").setId("1").setSource("{\"field\":\"foo\"}", XContentType.JSON));
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("index").setId("1").setSource("{\"field\":\"foo\"}", XContentType.JSON);
+        indexRandom(true, indexRequestBuilder);
+        indexRequestBuilder.request().decRef();
 
         // do a tv request for all fields, _ignored should be returned
         TermVectorsResponse resp = client().prepareTermVectors("index", "1").setSelectedFields("*").get();
@@ -1088,6 +1108,9 @@ public class GetTermVectorsIT extends AbstractTermVectorsTestCase {
             }
         }
         indexRandom(true, indexBuilders);
+        for (IndexRequestBuilder indexRequestBuilder : indexBuilders) {
+            indexRequestBuilder.request().decRef();
+        }
 
         // request tvs and compare from each index
         for (int id = 0; id < content.length; id++) {

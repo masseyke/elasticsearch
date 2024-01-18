@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.ml.integration;
 
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.support.PlainActionFuture;
 import org.elasticsearch.action.support.master.MasterNodeRequest;
 import org.elasticsearch.client.internal.OriginSettingClient;
@@ -65,7 +66,9 @@ public class UnusedStatsRemoverIT extends BaseMlIntegTestCase {
 
     public void testRemoveUnusedStats() throws Exception {
 
-        prepareIndex("foo").setId("some-empty-doc").setSource("{}", XContentType.JSON).get();
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("foo").setId("some-empty-doc").setSource("{}", XContentType.JSON);
+        indexRequestBuilder.get();
+        indexRequestBuilder.request().decRef();
 
         PutDataFrameAnalyticsAction.Request request = new PutDataFrameAnalyticsAction.Request(
             new DataFrameAnalyticsConfig.Builder().setId("analytics-with-stats")
@@ -144,11 +147,15 @@ public class UnusedStatsRemoverIT extends BaseMlIntegTestCase {
             Collections.singletonMap(ToXContentParams.FOR_INTERNAL_STORAGE, Boolean.toString(true))
         );
         IndexRequest doc = new IndexRequest(MlStatsIndex.writeAlias());
-        doc.id(docId);
-        try (XContentBuilder builder = XContentFactory.jsonBuilder()) {
-            object.toXContent(builder, params);
-            doc.source(builder);
-            client.index(doc).actionGet();
+        try {
+            doc.id(docId);
+            try (XContentBuilder builder = XContentFactory.jsonBuilder()) {
+                object.toXContent(builder, params);
+                doc.source(builder);
+                client.index(doc).actionGet();
+            }
+        } finally {
+            doc.decRef();
         }
     }
 }

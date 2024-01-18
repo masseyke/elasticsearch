@@ -134,6 +134,7 @@ public abstract class AbstractXContentTestCase<T extends ToXContent> extends EST
             CheckedBiFunction<T, XContentType, BytesReference, IOException> toXContent,
             CheckedFunction<XContentParser, T, IOException> fromXContent
         ) {
+
             this.createParser = createParser;
             this.instanceSupplier = instanceSupplier;
             this.toXContent = toXContent;

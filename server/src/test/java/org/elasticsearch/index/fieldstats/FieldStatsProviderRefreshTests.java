@@ -9,6 +9,7 @@
 package org.elasticsearch.index.fieldstats;
 
 import org.elasticsearch.action.DocWriteResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.search.SearchType;
 import org.elasticsearch.action.support.broadcast.BroadcastResponse;
 import org.elasticsearch.index.query.QueryBuilders;
@@ -93,7 +94,12 @@ public class FieldStatsProviderRefreshTests extends ESSingleNodeTestCase {
     }
 
     private void indexDocument(String id, String sValue) {
-        DocWriteResponse response = prepareIndex("index").setId(id).setSource("s", sValue).get();
-        assertThat(response.status(), anyOf(equalTo(RestStatus.OK), equalTo(RestStatus.CREATED)));
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("index").setId(id).setSource("s", sValue);
+        try {
+            DocWriteResponse response = indexRequestBuilder.get();
+            assertThat(response.status(), anyOf(equalTo(RestStatus.OK), equalTo(RestStatus.CREATED)));
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
     }
 }

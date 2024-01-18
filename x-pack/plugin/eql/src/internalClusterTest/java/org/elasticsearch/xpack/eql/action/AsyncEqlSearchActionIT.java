@@ -104,6 +104,9 @@ public class AsyncEqlSearchActionIT extends AbstractEqlBlockingIntegTestCase {
             );
         }
         indexRandom(true, builders);
+        for (IndexRequestBuilder builder : builders) {
+            builder.request().decRef();
+        }
     }
 
     public void testBasicAsyncExecution() throws Exception {

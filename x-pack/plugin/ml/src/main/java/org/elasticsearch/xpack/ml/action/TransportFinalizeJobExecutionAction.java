@@ -86,19 +86,27 @@ public class TransportFinalizeJobExecutionAction extends AcknowledgedTransportMa
 
         for (String jobId : request.getJobIds()) {
             UpdateRequest updateRequest = new UpdateRequest(MlConfigIndex.indexName(), Job.documentId(jobId));
-            updateRequest.retryOnConflict(3);
-            updateRequest.doc(update);
-            updateRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
+            try {
+                updateRequest.retryOnConflict(3);
+                updateRequest.doc(update);
+                updateRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
 
-            voidChainTaskExecutor.add(chainedListener -> {
-                executeAsyncWithOrigin(
-                    client,
-                    ML_ORIGIN,
-                    TransportUpdateAction.TYPE,
-                    updateRequest,
-                    chainedListener.delegateFailureAndWrap((l, updateResponse) -> l.onResponse(null))
-                );
-            });
+                voidChainTaskExecutor.add(chainedListener -> {
+                    executeAsyncWithOrigin(
+                        client,
+                        ML_ORIGIN,
+                        TransportUpdateAction.TYPE,
+                        updateRequest,
+                        ActionListener.runAfter(
+                            chainedListener.delegateFailureAndWrap((l, updateResponse) -> l.onResponse(null)),
+                            updateRequest::decRef
+                        )
+                    );
+                });
+            } catch (Exception e) {
+                updateRequest.decRef();
+                throw e;
+            }
         }
 
         voidChainTaskExecutor.execute(listener.delegateFailureAndWrap((l, aVoids) -> {

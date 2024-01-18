@@ -28,6 +28,7 @@ import org.elasticsearch.client.internal.ParentTaskAssigningClient;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.util.concurrent.AbstractRunnable;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.core.RefCounted;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.VersionType;
 import org.elasticsearch.index.reindex.AbstractBulkByScrollRequest;
@@ -272,9 +273,24 @@ public abstract class AbstractAsyncBulkByScrollAction<
         try {
             for (ScrollableHitSource.Hit doc : docs) {
                 if (accept(doc)) {
-                    RequestWrapper<?> request = scriptApplier.apply(copyMetadata(buildRequest(doc), doc), doc);
-                    if (request != null) {
-                        bulkRequest.add(request.self());
+                    RequestWrapper<?> originalRequest = buildRequest(doc);
+                    try {
+                        RequestWrapper<?> request = scriptApplier.apply(copyMetadata(originalRequest, doc), doc);
+                        if (request != null) {
+                            try {
+                                bulkRequest.add(request.self());
+                            } finally {
+                                if (originalRequest.self() != request.self()) {
+                                    if (request.self() instanceof RefCounted refCounted) {
+                                        refCounted.decRef();
+                                    }
+                                }
+                            }
+                        }
+                    } finally {
+                        if (originalRequest.self() instanceof RefCounted refCounted) {
+                            refCounted.decRef();
+                        }
                     }
                 }
             }

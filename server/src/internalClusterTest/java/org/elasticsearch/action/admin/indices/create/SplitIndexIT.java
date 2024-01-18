@@ -151,26 +151,34 @@ public class SplitIndexIT extends ESIntegTestCase {
         };
         for (int i = 0; i < numDocs; i++) {
             IndexRequestBuilder builder = indexFunc.apply("source", i);
-            if (useRouting) {
-                String routing = randomRealisticUnicodeOfCodepointLengthBetween(1, 10);
-                if (useMixedRouting && randomBoolean()) {
-                    routingValue[i] = null;
-                } else {
-                    routingValue[i] = routing;
+            try {
+                if (useRouting) {
+                    String routing = randomRealisticUnicodeOfCodepointLengthBetween(1, 10);
+                    if (useMixedRouting && randomBoolean()) {
+                        routingValue[i] = null;
+                    } else {
+                        routingValue[i] = routing;
+                    }
+                    builder.setRouting(routingValue[i]);
                 }
-                builder.setRouting(routingValue[i]);
+                builder.get();
+            } finally {
+                builder.request().decRef();
             }
-            builder.get();
         }
 
         if (randomBoolean()) {
             for (int i = 0; i < numDocs; i++) { // let's introduce some updates / deletes on the index
                 if (randomBoolean()) {
                     IndexRequestBuilder builder = indexFunc.apply("source", i);
-                    if (useRouting) {
-                        builder.setRouting(routingValue[i]);
+                    try {
+                        if (useRouting) {
+                            builder.setRouting(routingValue[i]);
+                        }
+                        builder.get();
+                    } finally {
+                        builder.request().decRef();
                     }
-                    builder.get();
                 }
             }
         }
@@ -193,10 +201,14 @@ public class SplitIndexIT extends ESIntegTestCase {
 
         for (int i = 0; i < numDocs; i++) { // now update
             IndexRequestBuilder builder = indexFunc.apply("first_split", i);
-            if (useRouting) {
-                builder.setRouting(routingValue[i]);
+            try {
+                if (useRouting) {
+                    builder.setRouting(routingValue[i]);
+                }
+                builder.get();
+            } finally {
+                builder.request().decRef();
             }
-            builder.get();
         }
         flushAndRefresh();
         assertHitCount(prepareSearch("first_split").setSize(100).setQuery(new TermsQueryBuilder("foo", "bar")), numDocs);
@@ -225,10 +237,14 @@ public class SplitIndexIT extends ESIntegTestCase {
 
         for (int i = 0; i < numDocs; i++) { // now update
             IndexRequestBuilder builder = indexFunc.apply("second_split", i);
-            if (useRouting) {
-                builder.setRouting(routingValue[i]);
+            try {
+                if (useRouting) {
+                    builder.setRouting(routingValue[i]);
+                }
+                builder.get();
+            } finally {
+                builder.request().decRef();
             }
-            builder.get();
         }
         flushAndRefresh();
         for (int i = 0; i < numDocs; i++) {
@@ -301,6 +317,7 @@ public class SplitIndexIT extends ESIntegTestCase {
                             final IndexRequest request = new IndexRequest("source").id(s)
                                 .source("{ \"f\": \"" + s + "\"}", XContentType.JSON);
                             client().index(request).get();
+                            request.decRef();
                             break;
                         } else {
                             id++;
@@ -343,7 +360,12 @@ public class SplitIndexIT extends ESIntegTestCase {
         ).get();
         final int docs = randomIntBetween(0, 128);
         for (int i = 0; i < docs; i++) {
-            prepareIndex("source").setSource("{\"foo\" : \"bar\", \"i\" : " + i + "}", XContentType.JSON).get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("source").setSource(
+                "{\"foo\" : \"bar\", \"i\" : " + i + "}",
+                XContentType.JSON
+            );
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
         }
         internalCluster().ensureAtLeastNumDataNodes(2);
         // ensure all shards are allocated otherwise the ensure green below might not succeed since we require the merge node
@@ -412,7 +434,12 @@ public class SplitIndexIT extends ESIntegTestCase {
             }
 
             for (int i = docs; i < 2 * docs; i++) {
-                prepareIndex("target").setSource("{\"foo\" : \"bar\", \"i\" : " + i + "}", XContentType.JSON).get();
+                IndexRequestBuilder indexRequestBuilder = prepareIndex("target").setSource(
+                    "{\"foo\" : \"bar\", \"i\" : " + i + "}",
+                    XContentType.JSON
+                );
+                indexRequestBuilder.get();
+                indexRequestBuilder.request().decRef();
             }
             flushAndRefresh();
             assertHitCount(prepareSearch("target").setSize(2 * size).setQuery(new TermsQueryBuilder("foo", "bar")), 2 * docs);
@@ -445,7 +472,10 @@ public class SplitIndexIT extends ESIntegTestCase {
                 .put("number_of_replicas", 0)
         ).setMapping("id", "type=keyword,doc_values=true").get();
         for (int i = 0; i < 20; i++) {
-            prepareIndex("source").setId(Integer.toString(i)).setSource("{\"foo\" : \"bar\", \"id\" : " + i + "}", XContentType.JSON).get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("source").setId(Integer.toString(i))
+                .setSource("{\"foo\" : \"bar\", \"id\" : " + i + "}", XContentType.JSON);
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
         }
         // ensure all shards are allocated otherwise the ensure green below might not succeed since we require the merge node
         // if we change the setting too quickly we will end up with one replica unassigned which can't be assigned anymore due
@@ -482,7 +512,12 @@ public class SplitIndexIT extends ESIntegTestCase {
 
         // ... and that the index sort is also applied to updates
         for (int i = 20; i < 40; i++) {
-            prepareIndex("target").setSource("{\"foo\" : \"bar\", \"i\" : " + i + "}", XContentType.JSON).get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("target").setSource(
+                "{\"foo\" : \"bar\", \"i\" : " + i + "}",
+                XContentType.JSON
+            );
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
         }
         flushAndRefresh();
         assertSortedSegments("target", expectedIndexSort);

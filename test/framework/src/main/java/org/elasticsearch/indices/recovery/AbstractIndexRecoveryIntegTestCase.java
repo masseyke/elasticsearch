@@ -125,6 +125,9 @@ public abstract class AbstractIndexRecoveryIntegTestCase extends ESIntegTestCase
             requests.add(prepareIndex(indexName).setSource("{}", XContentType.JSON));
         }
         indexRandom(true, requests);
+        for (IndexRequestBuilder indexRequestBuilder : requests) {
+            indexRequestBuilder.request().decRef();
+        }
         flush(indexName);
         requests.clear();
 
@@ -132,6 +135,9 @@ public abstract class AbstractIndexRecoveryIntegTestCase extends ESIntegTestCase
             requests.add(prepareIndex(indexName).setSource("{}", XContentType.JSON));
         }
         indexRandom(true, requests);
+        for (IndexRequestBuilder indexRequestBuilder : requests) {
+            indexRequestBuilder.request().decRef();
+        }
         ensureSearchable(indexName);
 
         ClusterStateResponse stateResponse = clusterAdmin().prepareState().get();
@@ -228,6 +234,9 @@ public abstract class AbstractIndexRecoveryIntegTestCase extends ESIntegTestCase
             requests.add(prepareIndex(indexName).setSource("{}", XContentType.JSON));
         }
         indexRandom(true, requests);
+        for (IndexRequestBuilder indexRequestBuilder : requests) {
+            indexRequestBuilder.request().decRef();
+        }
         ensureSearchable(indexName);
 
         ClusterStateResponse stateResponse = clusterAdmin().prepareState().get();
@@ -329,6 +338,9 @@ public abstract class AbstractIndexRecoveryIntegTestCase extends ESIntegTestCase
             requests.add(prepareIndex(indexName).setSource("{}", XContentType.JSON));
         }
         indexRandom(true, requests);
+        for (IndexRequestBuilder indexRequestBuilder : requests) {
+            indexRequestBuilder.request().decRef();
+        }
         ensureSearchable(indexName);
         assertHitCount(prepareSearch(indexName), numDocs);
 

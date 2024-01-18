@@ -7,6 +7,7 @@
  */
 package org.elasticsearch.indices;
 
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.support.broadcast.BaseBroadcastResponse;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
@@ -96,7 +97,9 @@ public class IndexingMemoryControllerIT extends ESSingleNodeTestCase {
         IndexService indexService = createIndex("index", indexSettings(1, 0).put("index.refresh_interval", -1).build());
         IndexShard shard = indexService.getShard(0);
         for (int i = 0; i < 100; i++) {
-            prepareIndex("index").setId(Integer.toString(i)).setSource("field", "value").get();
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("index").setId(Integer.toString(i)).setSource("field", "value");
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
         }
         // Force merge so we know all merges are done before we start deleting:
         BaseBroadcastResponse r = client().admin().indices().prepareForceMerge().setMaxNumSegments(1).get();

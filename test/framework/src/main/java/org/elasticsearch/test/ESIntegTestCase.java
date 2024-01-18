@@ -1426,7 +1426,12 @@ public abstract class ESIntegTestCase extends ESTestCase {
      * </pre>
      */
     protected final DocWriteResponse index(String index, XContentBuilder source) {
-        return prepareIndex(index).setSource(source).get();
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index);
+        try {
+            return indexRequestBuilder.setSource(source).get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
     }
 
     /**
@@ -1436,7 +1441,12 @@ public abstract class ESIntegTestCase extends ESTestCase {
      * </pre>
      */
     protected final DocWriteResponse index(String index, String id, Map<String, Object> source) {
-        return prepareIndex(index).setId(id).setSource(source).get();
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index);
+        try {
+            return indexRequestBuilder.setId(id).setSource(source).get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
     }
 
     /**
@@ -1446,7 +1456,12 @@ public abstract class ESIntegTestCase extends ESTestCase {
      * </pre>
      */
     protected final DocWriteResponse index(String index, String id, XContentBuilder source) {
-        return prepareIndex(index).setId(id).setSource(source).get();
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index);
+        try {
+            return indexRequestBuilder.setId(id).setSource(source).get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
     }
 
     /**
@@ -1456,7 +1471,12 @@ public abstract class ESIntegTestCase extends ESTestCase {
      * </pre>
      */
     protected final DocWriteResponse indexDoc(String index, String id, Object... source) {
-        return prepareIndex(index).setId(id).setSource(source).get();
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index);
+        try {
+            return indexRequestBuilder.setId(id).setSource(source).get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
     }
 
     /**
@@ -1468,7 +1488,12 @@ public abstract class ESIntegTestCase extends ESTestCase {
      * where source is a JSON String.
      */
     protected final DocWriteResponse index(String index, String id, String source) {
-        return prepareIndex(index).setId(id).setSource(source, XContentType.JSON).get();
+        IndexRequestBuilder indexRequestBuilder = prepareIndex(index);
+        try {
+            return indexRequestBuilder.setId(id).setSource(source, XContentType.JSON).get();
+        } finally {
+            indexRequestBuilder.request().decRef();
+        }
     }
 
     /**
@@ -1581,7 +1606,13 @@ public abstract class ESIntegTestCase extends ESTestCase {
         for (int i = 0; i < builders.length; i++) {
             builders[i] = prepareIndex(index).setSource("field", "value");
         }
-        indexRandom(forceRefresh, Arrays.asList(builders));
+        try {
+            indexRandom(forceRefresh, Arrays.asList(builders));
+        } finally {
+            for (IndexRequestBuilder builder : builders) {
+                builder.request().decRef();
+            }
+        }
     }
 
     /**
@@ -1651,6 +1682,7 @@ public abstract class ESIntegTestCase extends ESTestCase {
         for (IndexRequestBuilder builder : builders) {
             indices.add(builder.request().index());
         }
+        List<IndexRequestBuilder> newIndexRequestBuilders = new ArrayList<>();
         Set<List<String>> bogusIds = new HashSet<>(); // (index, type, id)
         if (random.nextBoolean() && builders.isEmpty() == false && dummyDocuments) {
             builders = new ArrayList<>(builders);
@@ -1662,7 +1694,9 @@ public abstract class ESIntegTestCase extends ESTestCase {
                 String index = RandomPicks.randomFrom(random, indices);
                 bogusIds.add(Arrays.asList(index, id));
                 // We configure a routing key in case the mapping requires it
-                builders.add(prepareIndex(index).setId(id).setSource("{}", XContentType.JSON).setRouting(id));
+                IndexRequestBuilder indexRequestBuilder = prepareIndex(index).setId(id).setSource("{}", XContentType.JSON).setRouting(id);
+                builders.add(indexRequestBuilder);
+                newIndexRequestBuilders.add(indexRequestBuilder);
             }
         }
         Collections.shuffle(builders, random());
@@ -1704,6 +1738,10 @@ public abstract class ESIntegTestCase extends ESTestCase {
         }
         for (CountDownLatch operation : inFlightAsyncOperations) {
             operation.await();
+        }
+        for (IndexRequestBuilder indexRequestBuilder : newIndexRequestBuilders) {
+            // We created these, so we're responsible for their lifecycle
+            indexRequestBuilder.request().decRef();
         }
         final List<Exception> actualErrors = new ArrayList<>();
         for (Tuple<IndexRequestBuilder, Exception> tuple : errors) {

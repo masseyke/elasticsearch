@@ -48,6 +48,11 @@ public final class BulkShardRequest extends ReplicatedWriteRequest<BulkShardRequ
     public BulkShardRequest(ShardId shardId, RefreshPolicy refreshPolicy, BulkItemRequest[] items) {
         super(shardId);
         this.items = items;
+        for (BulkItemRequest item : items) {
+            if (item != null) {
+                item.incRef();
+            }
+        }
         this.refCounted = LeakTracker.wrap(new BulkRequestRefCounted());
         setRefreshPolicy(refreshPolicy);
     }
@@ -175,7 +180,16 @@ public final class BulkShardRequest extends ReplicatedWriteRequest<BulkShardRequ
 
     @Override
     public boolean decRef() {
-        return refCounted.decRef();
+        assert refCounted.hasReferences() : "Attempt to decRef BulkShardRequest that is already closed";
+        boolean droppedToZero = refCounted.decRef();
+        if (droppedToZero) {
+            for (BulkItemRequest item : items) {
+                if (item != null) {
+                    item.decRef();
+                }
+            }
+        }
+        return droppedToZero;
     }
 
     @Override
@@ -189,6 +203,9 @@ public final class BulkShardRequest extends ReplicatedWriteRequest<BulkShardRequ
     }
 
     private static class BulkRequestRefCounted extends AbstractRefCounted {
+        // BulkRequestRefCounted() {
+        // super(true);
+        // }
         @Override
         protected void closeInternal() {
             // nothing to close

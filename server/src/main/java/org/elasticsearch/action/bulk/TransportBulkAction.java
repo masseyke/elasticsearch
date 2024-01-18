@@ -55,6 +55,7 @@ import org.elasticsearch.common.util.concurrent.AtomicArray;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.common.util.set.Sets;
 import org.elasticsearch.core.Assertions;
+import org.elasticsearch.core.RefCounted;
 import org.elasticsearch.core.Releasable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
@@ -295,10 +296,12 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
     }
 
     private void forkAndExecute(Task task, BulkRequest bulkRequest, String executorName, ActionListener<BulkResponse> releasingListener) {
-        threadPool.executor(Names.WRITE).execute(new ActionRunnable<>(releasingListener) {
+        bulkRequest.incRef();
+        ActionListener<BulkResponse> listener = ActionListener.runAfter(releasingListener, bulkRequest::decRef);
+        threadPool.executor(Names.WRITE).execute(new ActionRunnable<>(listener) {
             @Override
             protected void doRun() {
-                doInternalExecute(task, bulkRequest, executorName, releasingListener);
+                doInternalExecute(task, bulkRequest, executorName, listener);
             }
         });
     }
@@ -473,6 +476,9 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         for (int i = 0; i < bulkRequest.requests.size(); i++) {
             DocWriteRequest<?> request = bulkRequest.requests.get(i);
             if (request != null && setResponseFailureIfIndexMatches(responses, i, request, target, error)) {
+                if (bulkRequest.requests.get(i) instanceof RefCounted refCounted) {
+                    refCounted.decRef();
+                }
                 bulkRequest.requests.set(i, null);
             }
         }
@@ -716,6 +722,9 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                     BulkItemResponse bulkItemResponse = BulkItemResponse.failure(i, docWriteRequest.opType(), failure);
                     responses.set(i, bulkItemResponse);
                     // make sure the request gets never processed again
+                    if (bulkRequest.requests.get(i) instanceof RefCounted refCounted) {
+                        refCounted.decRef();
+                    }
                     bulkRequest.requests.set(i, null);
                 }
             }
@@ -749,6 +758,10 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                         bulkRequest.getRefreshPolicy(),
                         requests.toArray(new BulkItemRequest[0])
                     );
+                    for (BulkItemRequest request : requests) {
+                        // The BulkShardRequest constructor has incremented the ref, and we are no longer directly referencing this object
+                        request.decRef();
+                    }
                     bulkShardRequest.waitForActiveShards(bulkRequest.waitForActiveShards());
                     bulkShardRequest.timeout(bulkRequest.timeout());
                     bulkShardRequest.routedBasedOnClusterVersion(clusterState.version());
@@ -897,6 +910,9 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             responses.set(idx, bulkItemResponse);
             // make sure the request gets never processed again
             bulkRequest.requests.set(idx, null);
+            if (bulkRequest.requests.get(idx) instanceof RefCounted refCounted) {
+                refCounted.decRef();
+            }
         }
     }
 

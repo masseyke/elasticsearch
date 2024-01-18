@@ -18,6 +18,7 @@ import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.get.GetResponse;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.action.update.UpdateRequestBuilder;
 import org.elasticsearch.action.update.UpdateResponse;
@@ -149,10 +150,11 @@ public class UpdateIT extends ESIntegTestCase {
         ensureGreen();
         Script fieldIncScript = new Script(ScriptType.INLINE, UPDATE_SCRIPTS, FIELD_INC_SCRIPT, Collections.singletonMap("field", "field"));
 
-        UpdateResponse updateResponse = client().prepareUpdate(indexOrAlias(), "1")
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
             .setUpsert(XContentFactory.jsonBuilder().startObject().field("field", 1).endObject())
-            .setScript(fieldIncScript)
-            .get();
+            .setScript(fieldIncScript);
+        UpdateResponse updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
         assertEquals(DocWriteResponse.Result.CREATED, updateResponse.getResult());
         assertThat(updateResponse.getIndex(), equalTo("test"));
 
@@ -161,10 +163,11 @@ public class UpdateIT extends ESIntegTestCase {
             assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("1"));
         }
 
-        updateResponse = client().prepareUpdate(indexOrAlias(), "1")
+        updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
             .setUpsert(XContentFactory.jsonBuilder().startObject().field("field", 1).endObject())
-            .setScript(fieldIncScript)
-            .get();
+            .setScript(fieldIncScript);
+        updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
         assertEquals(DocWriteResponse.Result.UPDATED, updateResponse.getResult());
         assertThat(updateResponse.getIndex(), equalTo("test"));
 
@@ -189,11 +192,12 @@ public class UpdateIT extends ESIntegTestCase {
 
         // Pay money from what will be a new account and opening balance comes from upsert doc
         // provided by client
-        UpdateResponse updateResponse = client().prepareUpdate(indexOrAlias(), "1")
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
             .setUpsert(XContentFactory.jsonBuilder().startObject().field("balance", openingBalance).endObject())
             .setScriptedUpsert(true)
-            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, UPSERT_SCRIPT, params))
-            .get();
+            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, UPSERT_SCRIPT, params));
+        UpdateResponse updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
         assertEquals(DocWriteResponse.Result.CREATED, updateResponse.getResult());
         assertThat(updateResponse.getIndex(), equalTo("test"));
 
@@ -203,11 +207,12 @@ public class UpdateIT extends ESIntegTestCase {
         }
 
         // Now pay money for an existing account where balance is stored in es
-        updateResponse = client().prepareUpdate(indexOrAlias(), "1")
+        updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
             .setUpsert(XContentFactory.jsonBuilder().startObject().field("balance", openingBalance).endObject())
             .setScriptedUpsert(true)
-            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, UPSERT_SCRIPT, params))
-            .get();
+            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, UPSERT_SCRIPT, params));
+        updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
         assertEquals(DocWriteResponse.Result.UPDATED, updateResponse.getResult());
         assertThat(updateResponse.getIndex(), equalTo("test"));
 
@@ -221,11 +226,12 @@ public class UpdateIT extends ESIntegTestCase {
         createTestIndex();
         ensureGreen();
 
-        UpdateResponse updateResponse = client().prepareUpdate(indexOrAlias(), "1")
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
             .setDoc(XContentFactory.jsonBuilder().startObject().field("bar", "baz").endObject())
             .setDocAsUpsert(true)
-            .setFetchSource(true)
-            .get();
+            .setFetchSource(true);
+        UpdateResponse updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
         assertThat(updateResponse.getIndex(), equalTo("test"));
         assertThat(updateResponse.getGetResult(), notNullValue());
         assertThat(updateResponse.getGetResult().getIndex(), equalTo("test"));
@@ -237,25 +243,27 @@ public class UpdateIT extends ESIntegTestCase {
         createTestIndex();
         ensureGreen();
 
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1");
         assertFutureThrows(
-            client().prepareUpdate(indexOrAlias(), "1")
-                .setDoc(XContentFactory.jsonBuilder().startObject().field("bar", "baz").endObject())
+            updateRequestBuilder.setDoc(XContentFactory.jsonBuilder().startObject().field("bar", "baz").endObject())
                 .setDocAsUpsert(false)
                 .setFetchSource(true)
                 .execute(),
             DocumentMissingException.class
         );
+        updateRequestBuilder.request().decRef();
     }
 
     public void testUpsertFields() throws Exception {
         createTestIndex();
         ensureGreen();
 
-        UpdateResponse updateResponse = client().prepareUpdate(indexOrAlias(), "1")
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
             .setUpsert(XContentFactory.jsonBuilder().startObject().field("bar", "baz").endObject())
             .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, PUT_VALUES_SCRIPT, Collections.singletonMap("extra", "foo")))
-            .setFetchSource(true)
-            .get();
+            .setFetchSource(true);
+        UpdateResponse updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
 
         assertThat(updateResponse.getIndex(), equalTo("test"));
         assertThat(updateResponse.getGetResult(), notNullValue());
@@ -263,11 +271,12 @@ public class UpdateIT extends ESIntegTestCase {
         assertThat(updateResponse.getGetResult().sourceAsMap().get("bar").toString(), equalTo("baz"));
         assertThat(updateResponse.getGetResult().sourceAsMap().get("extra"), nullValue());
 
-        updateResponse = client().prepareUpdate(indexOrAlias(), "1")
+        updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
             .setUpsert(XContentFactory.jsonBuilder().startObject().field("bar", "baz").endObject())
             .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, PUT_VALUES_SCRIPT, Collections.singletonMap("extra", "foo")))
-            .setFetchSource(true)
-            .get();
+            .setFetchSource(true);
+        updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
 
         assertThat(updateResponse.getIndex(), equalTo("test"));
         assertThat(updateResponse.getGetResult(), notNullValue());
@@ -277,11 +286,12 @@ public class UpdateIT extends ESIntegTestCase {
     }
 
     public void testIndexAutoCreation() throws Exception {
-        UpdateResponse updateResponse = client().prepareUpdate("test", "1")
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate("test", "1")
             .setUpsert(XContentFactory.jsonBuilder().startObject().field("bar", "baz").endObject())
             .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, PUT_VALUES_SCRIPT, Collections.singletonMap("extra", "foo")))
-            .setFetchSource(true)
-            .get();
+            .setFetchSource(true);
+        UpdateResponse updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
 
         assertThat(updateResponse.getIndex(), equalTo("test"));
         assertThat(updateResponse.getGetResult(), notNullValue());
@@ -296,139 +306,175 @@ public class UpdateIT extends ESIntegTestCase {
         ensureGreen();
 
         Script fieldIncScript = new Script(ScriptType.INLINE, UPDATE_SCRIPTS, FIELD_INC_SCRIPT, Collections.singletonMap("field", "field"));
-        DocumentMissingException ex = expectThrows(
-            DocumentMissingException.class,
-            client().prepareUpdate(indexOrAlias(), "1").setScript(fieldIncScript)
-        );
-        assertEquals("[1]: document missing", ex.getMessage());
-
-        prepareIndex("test").setId("1").setSource("field", 1).get();
-
-        UpdateResponse updateResponse = client().prepareUpdate(indexOrAlias(), "1").setScript(fieldIncScript).get();
-        assertThat(updateResponse.getVersion(), equalTo(2L));
-        assertEquals(DocWriteResponse.Result.UPDATED, updateResponse.getResult());
-        assertThat(updateResponse.getIndex(), equalTo("test"));
-
-        for (int i = 0; i < 5; i++) {
-            GetResponse getResponse = client().prepareGet("test", "1").get();
-            assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("2"));
+        {
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1").setScript(fieldIncScript);
+            DocumentMissingException ex = expectThrows(DocumentMissingException.class, updateRequestBuilder);
+            updateRequestBuilder.request().decRef();
+            assertEquals("[1]: document missing", ex.getMessage());
         }
 
-        Map<String, Object> params = new HashMap<>();
-        params.put("inc", 3);
-        params.put("field", "field");
-        updateResponse = client().prepareUpdate(indexOrAlias(), "1")
-            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, FIELD_INC_SCRIPT, params))
-            .get();
-        assertThat(updateResponse.getVersion(), equalTo(3L));
-        assertEquals(DocWriteResponse.Result.UPDATED, updateResponse.getResult());
-        assertThat(updateResponse.getIndex(), equalTo("test"));
+        {
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("field", 1);
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
 
-        for (int i = 0; i < 5; i++) {
-            GetResponse getResponse = client().prepareGet("test", "1").get();
-            assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("5"));
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1").setScript(fieldIncScript);
+            UpdateResponse updateResponse = updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
+            assertThat(updateResponse.getVersion(), equalTo(2L));
+            assertEquals(DocWriteResponse.Result.UPDATED, updateResponse.getResult());
+            assertThat(updateResponse.getIndex(), equalTo("test"));
+
+            for (int i = 0; i < 5; i++) {
+                GetResponse getResponse = client().prepareGet("test", "1").get();
+                assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("2"));
+            }
         }
 
-        // check noop
-        updateResponse = client().prepareUpdate(indexOrAlias(), "1")
-            .setScript(
-                new Script(
-                    ScriptType.INLINE,
-                    UPDATE_SCRIPTS,
-                    PUT_VALUES_SCRIPT,
-                    Collections.singletonMap("_ctx", Collections.singletonMap("op", "none"))
-                )
-            )
-            .get();
-        assertThat(updateResponse.getVersion(), equalTo(3L));
-        assertEquals(DocWriteResponse.Result.NOOP, updateResponse.getResult());
-        assertThat(updateResponse.getIndex(), equalTo("test"));
+        {
+            Map<String, Object> params = new HashMap<>();
+            params.put("inc", 3);
+            params.put("field", "field");
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
+                .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, FIELD_INC_SCRIPT, params));
+            UpdateResponse updateResponse = updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
+            assertThat(updateResponse.getVersion(), equalTo(3L));
+            assertEquals(DocWriteResponse.Result.UPDATED, updateResponse.getResult());
+            assertThat(updateResponse.getIndex(), equalTo("test"));
 
-        for (int i = 0; i < 5; i++) {
-            GetResponse getResponse = client().prepareGet("test", "1").get();
-            assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("5"));
+            for (int i = 0; i < 5; i++) {
+                GetResponse getResponse = client().prepareGet("test", "1").get();
+                assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("5"));
+            }
         }
 
-        // check delete
-        updateResponse = client().prepareUpdate(indexOrAlias(), "1")
-            .setScript(
-                new Script(
-                    ScriptType.INLINE,
-                    UPDATE_SCRIPTS,
-                    PUT_VALUES_SCRIPT,
-                    Collections.singletonMap("_ctx", Collections.singletonMap("op", "delete"))
-                )
-            )
-            .get();
-        assertThat(updateResponse.getVersion(), equalTo(4L));
-        assertEquals(DocWriteResponse.Result.DELETED, updateResponse.getResult());
-        assertThat(updateResponse.getIndex(), equalTo("test"));
+        {
+            // check noop
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
+                .setScript(
+                    new Script(
+                        ScriptType.INLINE,
+                        UPDATE_SCRIPTS,
+                        PUT_VALUES_SCRIPT,
+                        Collections.singletonMap("_ctx", Collections.singletonMap("op", "none"))
+                    )
+                );
+            UpdateResponse updateResponse = updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
+            assertThat(updateResponse.getVersion(), equalTo(3L));
+            assertEquals(DocWriteResponse.Result.NOOP, updateResponse.getResult());
+            assertThat(updateResponse.getIndex(), equalTo("test"));
 
-        for (int i = 0; i < 5; i++) {
-            GetResponse getResponse = client().prepareGet("test", "1").get();
-            assertThat(getResponse.isExists(), equalTo(false));
+            for (int i = 0; i < 5; i++) {
+                GetResponse getResponse = client().prepareGet("test", "1").get();
+                assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("5"));
+            }
         }
 
-        // check _source parameter
-        prepareIndex("test").setId("1").setSource("field1", 1, "field2", 2).get();
-        updateResponse = client().prepareUpdate(indexOrAlias(), "1")
-            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, FIELD_INC_SCRIPT, Collections.singletonMap("field", "field1")))
-            .setFetchSource("field1", "field2")
-            .get();
-        assertThat(updateResponse.getIndex(), equalTo("test"));
-        assertThat(updateResponse.getGetResult(), notNullValue());
-        assertThat(updateResponse.getGetResult().getIndex(), equalTo("test"));
-        assertThat(updateResponse.getGetResult().sourceRef(), notNullValue());
-        assertThat(updateResponse.getGetResult().field("field1"), nullValue());
-        assertThat(updateResponse.getGetResult().sourceAsMap().size(), equalTo(1));
-        assertThat(updateResponse.getGetResult().sourceAsMap().get("field1"), equalTo(2));
+        {
+            // check delete
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
+                .setScript(
+                    new Script(
+                        ScriptType.INLINE,
+                        UPDATE_SCRIPTS,
+                        PUT_VALUES_SCRIPT,
+                        Collections.singletonMap("_ctx", Collections.singletonMap("op", "delete"))
+                    )
+                );
+            UpdateResponse updateResponse = updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
+            assertThat(updateResponse.getVersion(), equalTo(4L));
+            assertEquals(DocWriteResponse.Result.DELETED, updateResponse.getResult());
+            assertThat(updateResponse.getIndex(), equalTo("test"));
 
-        // check updates without script
-        // add new field
-        prepareIndex("test").setId("1").setSource("field", 1).get();
-        client().prepareUpdate(indexOrAlias(), "1")
-            .setDoc(XContentFactory.jsonBuilder().startObject().field("field2", 2).endObject())
-            .get();
-        for (int i = 0; i < 5; i++) {
-            GetResponse getResponse = client().prepareGet("test", "1").get();
-            assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("1"));
-            assertThat(getResponse.getSourceAsMap().get("field2").toString(), equalTo("2"));
+            for (int i = 0; i < 5; i++) {
+                GetResponse getResponse = client().prepareGet("test", "1").get();
+                assertThat(getResponse.isExists(), equalTo(false));
+            }
         }
 
-        // change existing field
-        client().prepareUpdate(indexOrAlias(), "1").setDoc(XContentFactory.jsonBuilder().startObject().field("field", 3).endObject()).get();
-        for (int i = 0; i < 5; i++) {
-            GetResponse getResponse = client().prepareGet("test", "1").get();
-            assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("3"));
-            assertThat(getResponse.getSourceAsMap().get("field2").toString(), equalTo("2"));
+        {
+            // check _source parameter
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("field1", 1, "field2", 2);
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
+                .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, FIELD_INC_SCRIPT, Collections.singletonMap("field", "field1")))
+                .setFetchSource("field1", "field2");
+            UpdateResponse updateResponse = updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
+            assertThat(updateResponse.getIndex(), equalTo("test"));
+            assertThat(updateResponse.getGetResult(), notNullValue());
+            assertThat(updateResponse.getGetResult().getIndex(), equalTo("test"));
+            assertThat(updateResponse.getGetResult().sourceRef(), notNullValue());
+            assertThat(updateResponse.getGetResult().field("field1"), nullValue());
+            assertThat(updateResponse.getGetResult().sourceAsMap().size(), equalTo(1));
+            assertThat(updateResponse.getGetResult().sourceAsMap().get("field1"), equalTo(2));
         }
 
-        // recursive map
-        Map<String, Object> testMap = new HashMap<>();
-        Map<String, Object> testMap2 = new HashMap<>();
-        Map<String, Object> testMap3 = new HashMap<>();
-        testMap3.put("commonkey", testMap);
-        testMap3.put("map3", 5);
-        testMap2.put("map2", 6);
-        testMap.put("commonkey", testMap2);
-        testMap.put("map1", 8);
+        {
+            // check updates without script
+            // add new field
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("field", 1);
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
+                .setDoc(XContentFactory.jsonBuilder().startObject().field("field2", 2).endObject());
+            updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
+            for (int i = 0; i < 5; i++) {
+                GetResponse getResponse = client().prepareGet("test", "1").get();
+                assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("1"));
+                assertThat(getResponse.getSourceAsMap().get("field2").toString(), equalTo("2"));
+            }
+        }
 
-        prepareIndex("test").setId("1").setSource("map", testMap).get();
-        client().prepareUpdate(indexOrAlias(), "1")
-            .setDoc(XContentFactory.jsonBuilder().startObject().field("map", testMap3).endObject())
-            .get();
-        for (int i = 0; i < 5; i++) {
-            GetResponse getResponse = client().prepareGet("test", "1").get();
-            Map<String, Object> map1 = get(getResponse.getSourceAsMap(), "map");
-            assertThat(map1.size(), equalTo(3));
-            assertThat(map1.containsKey("map1"), equalTo(true));
-            assertThat(map1.containsKey("map3"), equalTo(true));
-            assertThat(map1.containsKey("commonkey"), equalTo(true));
-            Map<String, Object> map2 = get(map1, "commonkey");
-            assertThat(map2.size(), equalTo(3));
-            assertThat(map2.containsKey("map1"), equalTo(true));
-            assertThat(map2.containsKey("map2"), equalTo(true));
-            assertThat(map2.containsKey("commonkey"), equalTo(true));
+        {
+            // change existing field
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
+                .setDoc(XContentFactory.jsonBuilder().startObject().field("field", 3).endObject());
+            updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
+            for (int i = 0; i < 5; i++) {
+                GetResponse getResponse = client().prepareGet("test", "1").get();
+                assertThat(getResponse.getSourceAsMap().get("field").toString(), equalTo("3"));
+                assertThat(getResponse.getSourceAsMap().get("field2").toString(), equalTo("2"));
+            }
+        }
+
+        {
+            // recursive map
+            Map<String, Object> testMap = new HashMap<>();
+            Map<String, Object> testMap2 = new HashMap<>();
+            Map<String, Object> testMap3 = new HashMap<>();
+            testMap3.put("commonkey", testMap);
+            testMap3.put("map3", 5);
+            testMap2.put("map2", 6);
+            testMap.put("commonkey", testMap2);
+            testMap.put("map1", 8);
+
+            IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("map", testMap);
+            indexRequestBuilder.get();
+            indexRequestBuilder.request().decRef();
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
+                .setDoc(XContentFactory.jsonBuilder().startObject().field("map", testMap3).endObject());
+            updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
+            for (int i = 0; i < 5; i++) {
+                GetResponse getResponse = client().prepareGet("test", "1").get();
+                Map<String, Object> map1 = get(getResponse.getSourceAsMap(), "map");
+                assertThat(map1.size(), equalTo(3));
+                assertThat(map1.containsKey("map1"), equalTo(true));
+                assertThat(map1.containsKey("map3"), equalTo(true));
+                assertThat(map1.containsKey("commonkey"), equalTo(true));
+                Map<String, Object> map2 = get(map1, "commonkey");
+                assertThat(map2.size(), equalTo(3));
+                assertThat(map2.containsKey("map1"), equalTo(true));
+                assertThat(map2.containsKey("map2"), equalTo(true));
+                assertThat(map2.containsKey("commonkey"), equalTo(true));
+            }
         }
     }
 
@@ -436,39 +482,46 @@ public class UpdateIT extends ESIntegTestCase {
         createTestIndex();
         ensureGreen();
 
-        DocWriteResponse result = prepareIndex("test").setId("1").setSource("field", 1).get();
-        expectThrows(
-            VersionConflictEngineException.class,
-            client().prepareUpdate(indexOrAlias(), "1")
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("1").setSource("field", 1);
+        DocWriteResponse result = indexRequestBuilder.get();
+        indexRequestBuilder.request().decRef();
+        {
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
                 .setDoc(XContentFactory.jsonBuilder().startObject().field("field", 2).endObject())
                 .setIfSeqNo(result.getSeqNo() + 1)
-                .setIfPrimaryTerm(result.getPrimaryTerm())
-        );
+                .setIfPrimaryTerm(result.getPrimaryTerm());
+            expectThrows(VersionConflictEngineException.class, updateRequestBuilder);
+            updateRequestBuilder.request().decRef();
+        }
 
-        expectThrows(
-            VersionConflictEngineException.class,
-            client().prepareUpdate(indexOrAlias(), "1")
+        {
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
                 .setDoc(XContentFactory.jsonBuilder().startObject().field("field", 2).endObject())
                 .setIfSeqNo(result.getSeqNo())
-                .setIfPrimaryTerm(result.getPrimaryTerm() + 1)
-        );
+                .setIfPrimaryTerm(result.getPrimaryTerm() + 1);
+            expectThrows(VersionConflictEngineException.class, updateRequestBuilder);
+            updateRequestBuilder.request().decRef();
+        }
 
-        expectThrows(
-            VersionConflictEngineException.class,
-            client().prepareUpdate(indexOrAlias(), "1")
+        {
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1")
                 .setDoc(XContentFactory.jsonBuilder().startObject().field("field", 2).endObject())
                 .setIfSeqNo(result.getSeqNo() + 1)
-                .setIfPrimaryTerm(result.getPrimaryTerm() + 1)
-        );
+                .setIfPrimaryTerm(result.getPrimaryTerm() + 1);
+            expectThrows(VersionConflictEngineException.class, updateRequestBuilder);
+            updateRequestBuilder.request().decRef();
+        }
 
-        UpdateResponse updateResponse = client().prepareUpdate(indexOrAlias(), "1")
-            .setDoc(XContentFactory.jsonBuilder().startObject().field("field", 2).endObject())
-            .setIfSeqNo(result.getSeqNo())
-            .setIfPrimaryTerm(result.getPrimaryTerm())
-            .get();
+        {
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1");
+            UpdateResponse updateResponse = updateRequestBuilder.setDoc(
+                XContentFactory.jsonBuilder().startObject().field("field", 2).endObject()
+            ).setIfSeqNo(result.getSeqNo()).setIfPrimaryTerm(result.getPrimaryTerm()).get();
+            updateRequestBuilder.request().decRef();
 
-        assertThat(updateResponse.status(), equalTo(RestStatus.OK));
-        assertThat(updateResponse.getSeqNo(), equalTo(result.getSeqNo() + 1));
+            assertThat(updateResponse.status(), equalTo(RestStatus.OK));
+            assertThat(updateResponse.getSeqNo(), equalTo(result.getSeqNo() + 1));
+        }
     }
 
     public void testUpdateRequestWithBothScriptAndDoc() throws Exception {
@@ -476,16 +529,18 @@ public class UpdateIT extends ESIntegTestCase {
         ensureGreen();
 
         Script fieldIncScript = new Script(ScriptType.INLINE, UPDATE_SCRIPTS, FIELD_INC_SCRIPT, Collections.singletonMap("field", "field"));
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1");
         try {
-            client().prepareUpdate(indexOrAlias(), "1")
-                .setDoc(XContentFactory.jsonBuilder().startObject().field("field", 1).endObject())
-                .setScript(fieldIncScript)
-                .get();
+            updateRequestBuilder.setDoc(XContentFactory.jsonBuilder().startObject().field("field", 1).endObject())
+                .setScript(fieldIncScript);
+            updateRequestBuilder.get();
             fail("Should have thrown ActionRequestValidationException");
         } catch (ActionRequestValidationException e) {
             assertThat(e.validationErrors().size(), equalTo(1));
             assertThat(e.validationErrors().get(0), containsString("can't provide both script and doc"));
             assertThat(e.getMessage(), containsString("can't provide both script and doc"));
+        } finally {
+            updateRequestBuilder.request().decRef();
         }
     }
 
@@ -493,10 +548,13 @@ public class UpdateIT extends ESIntegTestCase {
         createTestIndex();
         ensureGreen();
         Script fieldIncScript = new Script(ScriptType.INLINE, UPDATE_SCRIPTS, FIELD_INC_SCRIPT, Collections.singletonMap("field", "field"));
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), "1");
         try {
-            client().prepareUpdate(indexOrAlias(), "1").setScript(fieldIncScript).setDocAsUpsert(true).get();
+            updateRequestBuilder.setScript(fieldIncScript).setDocAsUpsert(true);
+            updateRequestBuilder.get();
             fail("Should have thrown ActionRequestValidationException");
         } catch (ActionRequestValidationException e) {
+            updateRequestBuilder.request().decRef();
             assertThat(e.validationErrors().size(), equalTo(1));
             assertThat(e.validationErrors().get(0), containsString("doc must be specified if doc_as_upsert is enabled"));
             assertThat(e.getMessage(), containsString("doc must be specified if doc_as_upsert is enabled"));
@@ -508,14 +566,21 @@ public class UpdateIT extends ESIntegTestCase {
         ensureGreen();
 
         // Index some documents
-        prepareIndex("test").setId("id1").setRouting("routing1").setSource("field1", 1, "content", "foo").get();
-        prepareIndex("test").setId("id2").setSource("field1", 0, "content", "bar").get();
+        IndexRequestBuilder indexRequestBuilder = prepareIndex("test").setId("id1")
+            .setRouting("routing1")
+            .setSource("field1", 1, "content", "foo");
+        indexRequestBuilder.get();
+        indexRequestBuilder.request().decRef();
+        indexRequestBuilder = prepareIndex("test").setId("id2").setSource("field1", 0, "content", "bar");
+        indexRequestBuilder.get();
+        indexRequestBuilder.request().decRef();
 
         // Update the first object and note context variables values
-        UpdateResponse updateResponse = client().prepareUpdate("test", "id1")
+        UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate("test", "id1")
             .setRouting("routing1")
-            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, EXTRACT_CTX_SCRIPT, Collections.emptyMap()))
-            .get();
+            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, EXTRACT_CTX_SCRIPT, Collections.emptyMap()));
+        UpdateResponse updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
 
         assertEquals(2, updateResponse.getVersion());
 
@@ -527,9 +592,10 @@ public class UpdateIT extends ESIntegTestCase {
         assertEquals("routing1", updateContext.get("_routing"));
 
         // Idem with the second object
-        updateResponse = client().prepareUpdate("test", "id2")
-            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, EXTRACT_CTX_SCRIPT, Collections.emptyMap()))
-            .get();
+        updateRequestBuilder = client().prepareUpdate("test", "id2")
+            .setScript(new Script(ScriptType.INLINE, UPDATE_SCRIPTS, EXTRACT_CTX_SCRIPT, Collections.emptyMap()));
+        updateResponse = updateRequestBuilder.get();
+        updateRequestBuilder.request().decRef();
 
         assertEquals(2, updateResponse.getVersion());
 
@@ -576,13 +642,19 @@ public class UpdateIT extends ESIntegTestCase {
                                     .setUpsert(jsonBuilder().startObject().field("field", 1).endObject());
                                 try (BulkRequestBuilder bulkRequestBuilder = client().prepareBulk()) {
                                     bulkRequestBuilder.add(updateRequestBuilder).get();
+                                } finally {
+                                    updateRequestBuilder.request().decRef();
                                 }
                             } else {
-                                client().prepareUpdate(indexOrAlias(), Integer.toString(i))
-                                    .setScript(fieldIncScript)
-                                    .setRetryOnConflict(Integer.MAX_VALUE)
-                                    .setUpsert(jsonBuilder().startObject().field("field", 1).endObject())
-                                    .get();
+                                UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate(indexOrAlias(), Integer.toString(i));
+                                try {
+                                    updateRequestBuilder.setScript(fieldIncScript)
+                                        .setRetryOnConflict(Integer.MAX_VALUE)
+                                        .setUpsert(jsonBuilder().startObject().field("field", 1).endObject())
+                                        .get();
+                                } finally {
+                                    updateRequestBuilder.request().decRef();
+                                }
                             }
                         }
                         logger.info("Client [{}] issued all [{}] requests.", Thread.currentThread().getName(), numberOfUpdatesPerThread);
@@ -698,27 +770,35 @@ public class UpdateIT extends ESIntegTestCase {
                     for (int j = 0; j < numberOfIds; j++) {
                         for (int k = 0; k < numberOfUpdatesPerId; ++k) {
                             updateRequestsOutstanding.acquire();
+                            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate("test", Integer.toString(j));
+
                             try {
-                                UpdateRequest ur = client().prepareUpdate("test", Integer.toString(j))
-                                    .setScript(fieldIncScript)
+                                UpdateRequest ur = updateRequestBuilder.setScript(fieldIncScript)
                                     .setRetryOnConflict(retryOnConflict)
                                     .setUpsert(jsonBuilder().startObject().field("field", 1).endObject())
                                     .request();
                                 if (randomBoolean()) {
-                                    client().update(ur, new UpdateListener(j));
+                                    client().update(ur, ActionListener.runAfter(new UpdateListener(j), ur::decRef));
                                 } else {
-                                    try (BulkRequestBuilder bulkRequestBuilder = client().prepareBulk()) {
-                                        bulkRequestBuilder.add(ur).execute(new UpdateListener(j).map(br -> {
+                                    BulkRequestBuilder bulkRequestBuilder = client().prepareBulk();
+                                    try {
+                                        bulkRequestBuilder.add(ur);
+                                        ur.decRef();
+                                        bulkRequestBuilder.execute(ActionListener.runAfter(new UpdateListener(j).map(br -> {
                                             final BulkItemResponse ir = br.getItems()[0];
                                             if (ir.isFailed()) {
                                                 throw ir.getFailure().getCause();
                                             } else {
                                                 return ir.getResponse();
                                             }
-                                        }));
+                                        }), bulkRequestBuilder::close));
+                                    } catch (Exception e) {
+                                        bulkRequestBuilder.close();
+                                        throw e;
                                     }
                                 }
                             } catch (NoNodeAvailableException nne) {
+                                updateRequestBuilder.request().decRef();
                                 updateRequestsOutstanding.release();
                                 synchronized (failedMap) {
                                     incrementMapValue(j, failedMap);
@@ -820,11 +900,12 @@ public class UpdateIT extends ESIntegTestCase {
         // This means that we add 1 to the expected versions and attempts
         // All the previous operations should be complete or failed at this point
         for (int i = 0; i < numberOfIdsPerThread; ++i) {
-            client().prepareUpdate("test", Integer.toString(i))
+            UpdateRequestBuilder updateRequestBuilder = client().prepareUpdate("test", Integer.toString(i))
                 .setScript(fieldIncScript)
                 .setRetryOnConflict(Integer.MAX_VALUE)
-                .setUpsert(jsonBuilder().startObject().field("field", 1).endObject())
-                .get();
+                .setUpsert(jsonBuilder().startObject().field("field", 1).endObject());
+            updateRequestBuilder.get();
+            updateRequestBuilder.request().decRef();
         }
 
         refresh();

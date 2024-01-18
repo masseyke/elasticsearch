@@ -700,7 +700,7 @@ public class DedicatedClusterSnapshotRestoreIT extends AbstractSnapshotIntegTest
 
         int docs = between(10, 100);
         for (int i = 0; i < docs; i++) {
-            prepareIndex(indexName).setSource("test", "init").get();
+            indexDoc(indexName, null, "test", "init");
         }
 
         final Path repoPath = randomRepoPath();
@@ -733,7 +733,7 @@ public class DedicatedClusterSnapshotRestoreIT extends AbstractSnapshotIntegTest
         // add few docs - less than initially
         docs = between(1, 5);
         for (int i = 0; i < docs; i++) {
-            prepareIndex(indexName).setSource("test", "test" + i).get();
+            indexDoc(indexName, null, "test", "test" + i);
         }
 
         // create another snapshot
@@ -785,7 +785,7 @@ public class DedicatedClusterSnapshotRestoreIT extends AbstractSnapshotIntegTest
 
         int docs = between(10, 100);
         for (int i = 0; i < docs; i++) {
-            prepareIndex(indexName).setSource("test", "init").get();
+            indexDoc(indexName, null, "test", "init");
         }
 
         final Path repoPath = randomRepoPath();
@@ -797,7 +797,7 @@ public class DedicatedClusterSnapshotRestoreIT extends AbstractSnapshotIntegTest
 
         docs = between(1, 5);
         for (int i = 0; i < docs; i++) {
-            prepareIndex(indexName).setSource("test", "test" + i).get();
+            indexDoc(indexName, null, "test", "test" + i);
         }
 
         logger.info("--> restart random data node and add new data node to change index allocation");
@@ -814,7 +814,7 @@ public class DedicatedClusterSnapshotRestoreIT extends AbstractSnapshotIntegTest
 
         // index to some other field to trigger a change in index metadata
         for (int i = 0; i < docs; i++) {
-            prepareIndex(indexName).setSource("new_field", "test" + i).get();
+            indexDoc(indexName, null, "new_field", "test" + i);
         }
         createFullSnapshot(repositoryName, snapshot2);
 
@@ -960,6 +960,9 @@ public class DedicatedClusterSnapshotRestoreIT extends AbstractSnapshotIntegTest
             indexRequestBuilders[i] = prepareIndex(indexName).setSource("field", "value");
         }
         indexRandom(true, indexRequestBuilders);
+        for (IndexRequestBuilder indexRequestBuilder : indexRequestBuilders) {
+            indexRequestBuilder.request().decRef();
+        }
         assertDocCount(indexName, snapshotDocCount);
 
         final String leaseId = randomAlphaOfLength(randomIntBetween(1, 10)).toLowerCase(Locale.ROOT);
@@ -984,6 +987,9 @@ public class DedicatedClusterSnapshotRestoreIT extends AbstractSnapshotIntegTest
                 indexRequestBuilders[i] = prepareIndex(indexName).setSource("field", "value");
             }
             indexRandom(true, indexRequestBuilders);
+            for (IndexRequestBuilder indexRequestBuilder : indexRequestBuilders) {
+                indexRequestBuilder.request().decRef();
+            }
         }
 
         // Wait for green so the close does not fail in the edge case of coinciding with a shard recovery that hasn't fully synced yet
