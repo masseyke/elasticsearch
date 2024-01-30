@@ -754,13 +754,13 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                     if (task != null) {
                         bulkShardRequest.setParentTask(nodeId, task.getId());
                     }
-                    executeBulkShardRequest(bulkShardRequest, bulkItemRequestCompleteRefCount.acquire());
+                    executeBulkShardRequest(bulkShardRequest, bulkShardRequest, bulkItemRequestCompleteRefCount.acquire());
                 }
             }
         }
 
-        private void executeBulkShardRequest(BulkShardRequest bulkShardRequest, Releasable releaseOnFinish) {
-            client.executeLocally(TransportShardBulkAction.TYPE, bulkShardRequest, new ActionListener<>() {
+        private void executeBulkShardRequest(BulkShardRequest bulkShardRequest, Releasable... releaseOnFinish) {
+            client.executeLocally(TransportShardBulkAction.TYPE, bulkShardRequest, ActionListener.runAfter(new ActionListener<>() {
                 @Override
                 public void onResponse(BulkShardResponse bulkShardResponse) {
                     for (BulkItemResponse bulkItemResponse : bulkShardResponse.getResponses()) {
@@ -770,7 +770,6 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                         }
                         responses.set(bulkItemResponse.getItemId(), bulkItemResponse);
                     }
-                    releaseOnFinish.close();
                 }
 
                 @Override
@@ -782,9 +781,12 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                         BulkItemResponse.Failure failure = new BulkItemResponse.Failure(indexName, docWriteRequest.id(), e);
                         responses.set(request.id(), BulkItemResponse.failure(request.id(), docWriteRequest.opType(), failure));
                     }
-                    releaseOnFinish.close();
                 }
-            });
+            }, () -> {
+                for (Releasable releaseable : releaseOnFinish) {
+                    releaseable.close();
+                }
+            }));
         }
 
         private boolean handleBlockExceptions(ClusterState state) {

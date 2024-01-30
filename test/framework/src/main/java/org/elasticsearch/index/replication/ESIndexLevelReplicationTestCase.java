@@ -266,9 +266,10 @@ public abstract class ESIndexLevelReplicationTestCase extends IndexShardTestCase
             );
             BulkItemRequest[] items = new BulkItemRequest[1];
             items[0] = new BulkItemRequest(0, writeRequest);
-            BulkShardRequest request = new BulkShardRequest(shardId, refreshPolicy, items);
-            new WriteReplicationAction(request, wrapBulkListener, this).execute();
-            return listener.get();
+            try (BulkShardRequest request = new BulkShardRequest(shardId, refreshPolicy, items)) {
+                new WriteReplicationAction(request, wrapBulkListener, this).execute();
+                return listener.get();
+            }
         }
 
         public synchronized void startAll() throws IOException {
@@ -908,14 +909,17 @@ public abstract class ESIndexLevelReplicationTestCase extends IndexShardTestCase
             IndexShard primary,
             Request request
         ) throws Exception {
-        final BulkShardRequest bulkShardRequest = new BulkShardRequest(
-            shardId,
-            request.getRefreshPolicy(),
-            new BulkItemRequest[] { new BulkItemRequest(0, request) }
-        );
-        final PlainActionFuture<BulkShardRequest> res = new PlainActionFuture<>();
-        executeShardBulkOnPrimary(primary, bulkShardRequest, res.map(TransportReplicationAction.PrimaryResult::replicaRequest));
-        return res.get();
+        try (
+            BulkShardRequest bulkShardRequest = new BulkShardRequest(
+                shardId,
+                request.getRefreshPolicy(),
+                new BulkItemRequest[] { new BulkItemRequest(0, request) }
+            )
+        ) {
+            final PlainActionFuture<BulkShardRequest> res = new PlainActionFuture<>();
+            executeShardBulkOnPrimary(primary, bulkShardRequest, res.map(TransportReplicationAction.PrimaryResult::replicaRequest));
+            return res.get();
+        }
     }
 
     private void executeShardBulkOnReplica(
