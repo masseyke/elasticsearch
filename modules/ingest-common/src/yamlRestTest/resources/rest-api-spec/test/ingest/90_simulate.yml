@@ -324,6 +324,134 @@ teardown:
   - is_true: docs.0.processor_results.4.doc._ingest.pipeline
 
 ---
+"Test Simulate Pipeline Processor with Circular Pipelines":
+  - do:
+      ingest.put_pipeline:
+        id: "pipeline_1"
+        body:  >
+          {
+            "description" : "pipeline 1",
+            "processors" : [
+              {
+                "pipeline" : {
+                  "name": "pipeline_2"
+                }
+              }
+            ]
+          }
+  - match: { acknowledged: true }
+
+  - do:
+      ingest.put_pipeline:
+        id: "pipeline_2"
+        body:  >
+          {
+            "description" : "pipeline 2",
+            "processors" : [
+              {
+                "pipeline" : {
+                  "name": "pipeline_1"
+                }
+              }
+            ]
+          }
+  - match: { acknowledged: true }
+
+  - do:
+      ingest.simulate:
+        body: >
+          {
+            "pipeline": {
+              "description" : "pipeline 3",
+              "processors" : [
+                {
+                  "pipeline" : {
+                    "name": "pipeline_1"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              {
+                "_index": "index-1",
+                "_id": "id",
+                "_source": {
+                  "foo": {
+                    "bar" : [ {"item": "HELLO"} ]
+                  }
+                }
+              }
+            ]
+          }
+  - match: { docs.0.error.type: "graph_structure_exception" }
+  - match: { docs.0.error.reason: "Cycle detected for pipeline: pipeline_1" }
+
+---
+"Test Verbose Simulate Pipeline Processor with Circular Pipelines":
+  - do:
+      ingest.put_pipeline:
+        id: "pipeline_1"
+        body:  >
+          {
+            "description" : "pipeline 1",
+            "processors" : [
+              {
+                "pipeline" : {
+                  "name": "pipeline_2"
+                }
+              }
+            ]
+          }
+  - match: { acknowledged: true }
+
+  - do:
+      ingest.put_pipeline:
+        id: "pipeline_2"
+        body:  >
+          {
+            "description" : "pipeline 2",
+            "processors" : [
+              {
+                "pipeline" : {
+                  "name": "pipeline_1"
+                }
+              }
+            ]
+          }
+  - match: { acknowledged: true }
+
+  - do:
+      ingest.simulate:
+        verbose: true
+        body: >
+          {
+            "pipeline": {
+              "description" : "pipeline 3",
+              "processors" : [
+                {
+                  "pipeline" : {
+                    "name": "pipeline_1"
+                  }
+                }
+              ]
+            },
+            "docs": [
+              {
+                "_index": "index-1",
+                "_id": "id",
+                "_source": {
+                  "foo": {
+                    "bar" : [ {"item": "HELLO"} ]
+                  }
+                }
+              }
+            ]
+          }
+  - match: { docs.0.processor_results.0.status: "error" }
+  - match: { docs.0.processor_results.0.error.type: "graph_structure_exception" }
+  - match: { docs.0.processor_results.0.error.reason: "Cycle detected for pipeline: pipeline_1" }
+
+---
 "Test simulate with exception thrown":
   - do:
       ingest.simulate:
