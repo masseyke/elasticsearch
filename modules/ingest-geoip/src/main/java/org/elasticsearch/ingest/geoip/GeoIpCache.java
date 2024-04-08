@@ -44,6 +44,7 @@ final class GeoIpCache {
 
     private final Cache<CacheKey, AbstractResponse> cache;
     private final AtomicLong queryCount = new AtomicLong(0);
+    private final AtomicLong totalCacheRequestTime = new AtomicLong(0);
     private final AtomicLong totalDatabaseRequests = new AtomicLong(0);
     private final AtomicLong totalDatabaseRequestTime = new AtomicLong(0);
 
@@ -65,15 +66,16 @@ final class GeoIpCache {
         // can't use cache.computeIfAbsent due to the elevated permissions for the jackson (run via the cache loader)
         CacheKey cacheKey = new CacheKey(ip, databasePath);
         // intentionally non-locking for simplicity...it's OK if we re-put the same key/value in the cache during a race condition.
+        long cacheStart = System.nanoTime();
         AbstractResponse response = cache.get(cacheKey);
+        totalCacheRequestTime.addAndGet(System.nanoTime() - cacheStart);
 
         // populate the cache for this key, if necessary
         if (response == null) {
-            long start = System.currentTimeMillis();
+            long start = System.nanoTime();
             response = retrieveFunction.apply(ip);
-            long end = System.currentTimeMillis();
+            totalDatabaseRequestTime.addAndGet((System.nanoTime() - start));
             totalDatabaseRequests.incrementAndGet();
-            totalDatabaseRequestTime.addAndGet((end - start));
             // if the response from the database was null, then use the no-result sentinel value
             if (response == null) {
                 response = NO_RESULT;
@@ -84,15 +86,14 @@ final class GeoIpCache {
         if (currentCount % 1000 == 0) {
             logger.info("******** GeoIp cache stats **********");
             logger.info("Total requests to cache: " + currentCount);
+            logger.info("Total amount of cache request time (ns): " + totalCacheRequestTime.get());
             logger.info("Total number of database requests: " + totalDatabaseRequests.get());
-            logger.info("Total amount of database request time: " + totalDatabaseRequestTime.get());
+            logger.info("Total amount of database request time (ns): " + totalDatabaseRequestTime.get());
             Cache.CacheStats cacheStats = cache.stats();
             logger.info("Cache hits: " + cacheStats.getHits());
             logger.info("Cache misses: " + cacheStats.getMisses());
             logger.info("Cache evictions: " + cacheStats.getEvictions());
             logger.info("******** End GeoIp cache stats **********");
-        } else {
-            logger.info("******** Not printing GeoIp cache stats **********");
         }
         if (true) throw new RuntimeException("argh");
         if (response == NO_RESULT) {
