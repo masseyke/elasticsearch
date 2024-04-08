@@ -418,7 +418,7 @@ public final class DatabaseNodeService implements GeoIpDatabaseProvider, Closeab
                     logger.debug("no pipelines found to reload");
                 }
             }
-            logger.info("successfully loaded geoip database file [{}]", file.getFileName());
+            logger.info("THIS IS A CHANGE successfully loaded geoip database file [{}]", file.getFileName());
         } catch (Exception e) {
             logger.error(() -> "failed to update database [" + databaseFileName + "]", e);
         }
