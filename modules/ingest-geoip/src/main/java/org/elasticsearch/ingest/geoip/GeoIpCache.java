@@ -74,7 +74,6 @@ final class GeoIpCache {
         long cacheRequestTime = System.nanoTime() - cacheStart;
         totalCacheRequestTime.addAndGet(cacheRequestTime);
         totalTime.addAndGet(cacheRequestTime);
-        totalCacheMissRequestTime.addAndGet(cacheRequestTime);
 
         // populate the cache for this key, if necessary
         if (response == null) {
@@ -82,6 +81,7 @@ final class GeoIpCache {
             response = retrieveFunction.apply(ip);
             long databaseRequestTime = System.nanoTime() - start;
             totalDatabaseRequestTime.addAndGet(databaseRequestTime);
+            totalCacheMissRequestTime.addAndGet(cacheRequestTime);
             totalCacheMissRequestTime.addAndGet(databaseRequestTime);
             totalTime.addAndGet(databaseRequestTime);
             totalDatabaseRequests.incrementAndGet();
@@ -91,6 +91,8 @@ final class GeoIpCache {
             }
             // store the result or no-result in the cache
             cache.put(cacheKey, response);
+        } else {
+            totalCacheHitRequestTime.addAndGet(cacheRequestTime);
         }
         if (currentCount % 100000 == 0) {
             logger.info("******** GeoIp cache stats **********");
