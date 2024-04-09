@@ -14,6 +14,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.cache.Cache;
 import org.elasticsearch.common.cache.CacheBuilder;
+import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.ingest.geoip.stats.CacheStats;
 
 import java.net.InetAddress;
 import java.nio.file.Path;
@@ -43,21 +45,16 @@ final class GeoIpCache {
     };
 
     private final Cache<CacheKey, AbstractResponse> cache;
-    private final AtomicLong queryCount = new AtomicLong(0);
-    private final AtomicLong totalTime = new AtomicLong(0);
-    private final AtomicLong totalCacheRequestTime = new AtomicLong(0);
     private final AtomicLong totalCacheHitRequestTime = new AtomicLong(0);
     private final AtomicLong totalCacheMissRequestTime = new AtomicLong(0);
     private final AtomicLong totalDatabaseRequests = new AtomicLong(0);
     private final AtomicLong totalDatabaseRequestTime = new AtomicLong(0);
-    private final long maxSize;
 
     // package private for testing
     GeoIpCache(long maxSize) {
         if (maxSize < 0) {
             throw new IllegalArgumentException("geoip max cache size must be 0 or greater");
         }
-        this.maxSize = maxSize;
         this.cache = CacheBuilder.<CacheKey, AbstractResponse>builder().setMaximumWeight(maxSize).build();
     }
 
@@ -67,15 +64,12 @@ final class GeoIpCache {
         String databasePath,
         Function<InetAddress, AbstractResponse> retrieveFunction
     ) {
-        long currentCount = queryCount.incrementAndGet();
         // can't use cache.computeIfAbsent due to the elevated permissions for the jackson (run via the cache loader)
         CacheKey cacheKey = new CacheKey(ip, databasePath);
         // intentionally non-locking for simplicity...it's OK if we re-put the same key/value in the cache during a race condition.
         long cacheStart = System.nanoTime();
         AbstractResponse response = cache.get(cacheKey);
         long cacheRequestTime = System.nanoTime() - cacheStart;
-        totalCacheRequestTime.addAndGet(cacheRequestTime);
-        totalTime.addAndGet(cacheRequestTime);
 
         // populate the cache for this key, if necessary
         if (response == null) {
@@ -85,7 +79,6 @@ final class GeoIpCache {
             totalDatabaseRequestTime.addAndGet(databaseRequestTime);
             totalCacheMissRequestTime.addAndGet(cacheRequestTime);
             totalCacheMissRequestTime.addAndGet(databaseRequestTime);
-            totalTime.addAndGet(databaseRequestTime);
             totalDatabaseRequests.incrementAndGet();
             // if the response from the database was null, then use the no-result sentinel value
             if (response == null) {
@@ -96,24 +89,6 @@ final class GeoIpCache {
         } else {
             totalCacheHitRequestTime.addAndGet(cacheRequestTime);
         }
-        if (currentCount % 100000 == 0) {
-            logger.info("******** GeoIp cache stats **********");
-            logger.info("Total requests to cache: " + currentCount);
-            logger.info("Total amount of request time including database requests (ns): " + totalTime.get());
-            logger.info("Total amount of cache request time (ns): " + totalCacheRequestTime.get());
-            logger.info("Total amount of cache request time for cache hits (ns): " + totalCacheHitRequestTime.get());
-            logger.info("Total amount of request time for cache misses (ns): " + totalCacheMissRequestTime.get());
-            logger.info("Total number of database requests: " + totalDatabaseRequests.get());
-            logger.info("Total amount of database request time (ns): " + totalDatabaseRequestTime.get());
-            Cache.CacheStats cacheStats = cache.stats();
-            logger.info("Cache hits: " + cacheStats.getHits());
-            logger.info("Cache misses: " + cacheStats.getMisses());
-            logger.info("Cache evictions: " + cacheStats.getEvictions());
-            logger.info("Items in cache: " + cache.count());
-            logger.info("Max size of cache: " + maxSize);
-            logger.info("******** End GeoIp cache stats **********");
-        }
-        if (true) throw new RuntimeException("argh");
         if (response == NO_RESULT) {
             return null; // the no-result sentinel is an internal detail, don't expose it
         } else {
@@ -141,6 +116,19 @@ final class GeoIpCache {
 
     public int count() {
         return cache.count();
+    }
+
+    public CacheStats getCacheStats() {
+        Cache.CacheStats stats = cache.stats();
+        return new CacheStats(
+            cache.count(),
+            stats.getHits(),
+            stats.getMisses(),
+            stats.getEvictions(),
+            TimeValue.timeValueNanos(totalCacheHitRequestTime.get()).getMillis(),
+            TimeValue.timeValueNanos(totalCacheMissRequestTime.get()).getMillis(),
+            TimeValue.timeValueNanos(totalDatabaseRequestTime.get()).getMillis()
+        );
     }
 
     /**

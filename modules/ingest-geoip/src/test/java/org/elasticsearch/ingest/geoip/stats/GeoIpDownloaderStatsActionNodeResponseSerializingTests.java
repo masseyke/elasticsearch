@@ -41,6 +41,7 @@ public class GeoIpDownloaderStatsActionNodeResponseSerializingTests extends Abst
         return new GeoIpDownloaderStatsAction.NodeResponse(
             node,
             GeoIpDownloaderStatsSerializingTests.createRandomInstance(),
+            null,
             databases,
             files,
             configDatabases
