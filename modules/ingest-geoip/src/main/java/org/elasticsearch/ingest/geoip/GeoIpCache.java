@@ -50,12 +50,14 @@ final class GeoIpCache {
     private final AtomicLong totalCacheMissRequestTime = new AtomicLong(0);
     private final AtomicLong totalDatabaseRequests = new AtomicLong(0);
     private final AtomicLong totalDatabaseRequestTime = new AtomicLong(0);
+    private final long maxSize;
 
     // package private for testing
     GeoIpCache(long maxSize) {
         if (maxSize < 0) {
             throw new IllegalArgumentException("geoip max cache size must be 0 or greater");
         }
+        this.maxSize = maxSize;
         this.cache = CacheBuilder.<CacheKey, AbstractResponse>builder().setMaximumWeight(maxSize).build();
     }
 
@@ -107,6 +109,8 @@ final class GeoIpCache {
             logger.info("Cache hits: " + cacheStats.getHits());
             logger.info("Cache misses: " + cacheStats.getMisses());
             logger.info("Cache evictions: " + cacheStats.getEvictions());
+            logger.info("Items in cache: " + cache.count());
+            logger.info("Max size of cache: " + maxSize);
             logger.info("******** End GeoIp cache stats **********");
         }
         if (true) throw new RuntimeException("argh");
