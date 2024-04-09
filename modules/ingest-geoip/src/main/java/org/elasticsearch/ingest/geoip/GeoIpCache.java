@@ -44,7 +44,10 @@ final class GeoIpCache {
 
     private final Cache<CacheKey, AbstractResponse> cache;
     private final AtomicLong queryCount = new AtomicLong(0);
+    private final AtomicLong totalTime = new AtomicLong(0);
     private final AtomicLong totalCacheRequestTime = new AtomicLong(0);
+    private final AtomicLong totalCacheHitRequestTime = new AtomicLong(0);
+    private final AtomicLong totalCacheMissRequestTime = new AtomicLong(0);
     private final AtomicLong totalDatabaseRequests = new AtomicLong(0);
     private final AtomicLong totalDatabaseRequestTime = new AtomicLong(0);
 
@@ -68,13 +71,19 @@ final class GeoIpCache {
         // intentionally non-locking for simplicity...it's OK if we re-put the same key/value in the cache during a race condition.
         long cacheStart = System.nanoTime();
         AbstractResponse response = cache.get(cacheKey);
-        totalCacheRequestTime.addAndGet(System.nanoTime() - cacheStart);
+        long cacheRequestTime = System.nanoTime() - cacheStart;
+        totalCacheRequestTime.addAndGet(cacheRequestTime);
+        totalTime.addAndGet(cacheRequestTime);
+        totalCacheMissRequestTime.addAndGet(cacheRequestTime);
 
         // populate the cache for this key, if necessary
         if (response == null) {
             long start = System.nanoTime();
             response = retrieveFunction.apply(ip);
-            totalDatabaseRequestTime.addAndGet((System.nanoTime() - start));
+            long databaseRequestTime = System.nanoTime() - start;
+            totalDatabaseRequestTime.addAndGet(databaseRequestTime);
+            totalCacheMissRequestTime.addAndGet(databaseRequestTime);
+            totalTime.addAndGet(databaseRequestTime);
             totalDatabaseRequests.incrementAndGet();
             // if the response from the database was null, then use the no-result sentinel value
             if (response == null) {
@@ -83,10 +92,13 @@ final class GeoIpCache {
             // store the result or no-result in the cache
             cache.put(cacheKey, response);
         }
-        if (currentCount % 1000 == 0) {
+        if (currentCount % 100000 == 0) {
             logger.info("******** GeoIp cache stats **********");
             logger.info("Total requests to cache: " + currentCount);
+            logger.info("Total amount of request time including database requests (ns): " + totalTime.get());
             logger.info("Total amount of cache request time (ns): " + totalCacheRequestTime.get());
+            logger.info("Total amount of cache request time for cache hits (ns): " + totalCacheHitRequestTime.get());
+            logger.info("Total amount of request time for cache misses (ns): " + totalCacheMissRequestTime.get());
             logger.info("Total number of database requests: " + totalDatabaseRequests.get());
             logger.info("Total amount of database request time (ns): " + totalDatabaseRequestTime.get());
             Cache.CacheStats cacheStats = cache.stats();
