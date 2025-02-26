@@ -230,6 +230,8 @@ import org.elasticsearch.features.NodeFeature;
 import org.elasticsearch.gateway.TransportNodesListGatewayStartedShards;
 import org.elasticsearch.health.GetHealthAction;
 import org.elasticsearch.health.RestGetHealthAction;
+import org.elasticsearch.health.RestWhatIsMyClusterDoingAction;
+import org.elasticsearch.health.WhatIsMyClusterDoingAction;
 import org.elasticsearch.health.node.FetchHealthInfoCacheAction;
 import org.elasticsearch.health.node.UpdateHealthInfoCacheAction;
 import org.elasticsearch.health.stats.HealthApiStatsAction;
@@ -636,6 +638,7 @@ public class ActionModule extends AbstractModule {
         actions.register(TransportGetTaskAction.TYPE, TransportGetTaskAction.class);
         actions.register(TransportCancelTasksAction.TYPE, TransportCancelTasksAction.class);
         actions.register(GetHealthAction.INSTANCE, GetHealthAction.LocalAction.class);
+        actions.register(WhatIsMyClusterDoingAction.INSTANCE, WhatIsMyClusterDoingAction.LocalAction.class);
         actions.register(PrevalidateNodeRemovalAction.INSTANCE, TransportPrevalidateNodeRemovalAction.class);
         actions.register(HealthApiStatsAction.INSTANCE, HealthApiStatsTransportAction.class);
 
@@ -890,6 +893,7 @@ public class ActionModule extends AbstractModule {
         registerHandler.accept(new RestOpenIndexAction());
         registerHandler.accept(new RestAddIndexBlockAction());
         registerHandler.accept(new RestGetHealthAction());
+        registerHandler.accept(new RestWhatIsMyClusterDoingAction());
         registerHandler.accept(new RestPrevalidateNodeRemovalAction());
 
         registerHandler.accept(new RestUpdateSettingsAction());
