@@ -620,7 +620,6 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             boolean watchIt = false;
             List<String> elasticStack = new ArrayList<>();
             double percent = -1;
-            System.out.println("\n**** Node " + node);
             List<String> threadSummaries = new ArrayList<>();
             for (String line : lines) {
                 if (line.isBlank()) {

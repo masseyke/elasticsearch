@@ -174,7 +174,8 @@ public class EntitlementInitialization {
             FileData.ofPath(Path.of("/sys/fs/cgroup/"), READ).withPlatform(LINUX),
             // // io stats on Linux
             FileData.ofPath(Path.of("/proc/self/mountinfo"), READ).withPlatform(LINUX),
-            FileData.ofPath(Path.of("/proc/diskstats"), READ).withPlatform(LINUX)
+            FileData.ofPath(Path.of("/proc/diskstats"), READ).withPlatform(LINUX),
+            FileData.ofPath(Path.of("/Users/keithmassey/sdh/"), READ)
         );
         if (bootstrapArgs.pidFile() != null) {
             serverModuleFileDatas.add(FileData.ofPath(bootstrapArgs.pidFile(), READ_WRITE));
