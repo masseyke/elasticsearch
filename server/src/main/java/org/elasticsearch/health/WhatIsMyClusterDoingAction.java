@@ -81,12 +81,12 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
     }
 
     public static class Response extends ActionResponse implements ToXContentObject {
-        private final Map<String, List<String>> nodesToDistilledHotThreads;
+        private final Map<String, List<LocalAction.DistilledHotThread>> nodesToDistilledHotThreads;
         private final Map<String, Map<String, LocalAction.PipelineDetails>> nodeToPipelineInfoMap;
         private final Request.Mode mode;
 
         public Response(
-            Map<String, List<String>> nodesToDistilledHotThreads,
+            Map<String, List<LocalAction.DistilledHotThread>> nodesToDistilledHotThreads,
             Map<String, Map<String, LocalAction.PipelineDetails>> nodeToPipelineInfoMap,
             Request.Mode mode
         ) {
@@ -121,15 +121,16 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
             builder.startObject();
             builder.startArray("nodes");
-            for (Map.Entry<String, List<String>> entry : nodesToDistilledHotThreads.entrySet()) {
+            for (Map.Entry<String, List<LocalAction.DistilledHotThread>> entry : nodesToDistilledHotThreads.entrySet()) {
+                List<LocalAction.DistilledHotThread> threads = entry.getValue();
                 String nodeName = entry.getKey();
-                if (entry.getValue().isEmpty()
+                if (threads.isEmpty()
                     && (nodeToPipelineInfoMap.get(nodeName) == null || nodeToPipelineInfoMap.get(nodeName).isEmpty())) {
                     continue;
                 }
                 builder.startObject();
                 builder.field("name", nodeName);
-                List<String> threadDescriptions = entry.getValue();
+                List<String> threadDescriptions = threads.stream().map(thread -> thread.percent + "% " + thread.activities.stream().collect(Collectors.joining(", "))).toList();
                 builder.startArray("threads");
                 for (String threadDescription : threadDescriptions) {
                     builder.startObject();
@@ -245,7 +246,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
         @Override
         protected void doExecute(Task task, Request request, ActionListener<Response> responseListener) {
-            AtomicReference<Map<String, List<String>>> nodesHotThreadsMap = new AtomicReference<>();
+            AtomicReference<Map<String, List<DistilledHotThread>>> nodesHotThreadsMap = new AtomicReference<>();
             SubscribableListener.newForked(request.demoMode ? this::fetchHotThreadsFromDisk : this::fetchHotThreads)
                 .<NodesStatsResponse>andThen((l, hotThreadsResponse) -> {
                     nodesHotThreadsMap.set(distillHotThreads(hotThreadsResponse.getNodesMap()));
@@ -469,19 +470,19 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             listener.onResponse(new NodesStatsResponse(clusterName, nodes, failedNodeExceptions));
         }
 
-        public static Map<String, List<String>> distillHotThreads(Map<String, NodeHotThreads> hotThreadsMap) {
-            Map<String, List<String>> nodesToDistilledHotThreads = new HashMap<>();
+        public static Map<String, List<DistilledHotThread>> distillHotThreads(Map<String, NodeHotThreads> hotThreadsMap) {
+            Map<String, List<DistilledHotThread>> nodesToDistilledHotThreads = new HashMap<>();
             for (Map.Entry<String, NodeHotThreads> entry : hotThreadsMap.entrySet()) {
                 NodeHotThreads hotThreads = entry.getValue();
                 String hotThreadsForNode = hotThreads.getHotThreads();
-                List<String> distilledHotThreads = distillHotThreadsForSingleNode(false, hotThreadsForNode);
+                List<DistilledHotThread> distilledHotThreads = distillHotThreadsForSingleNode(false, hotThreadsForNode);
                 nodesToDistilledHotThreads.put(hotThreads.getNode().getName(), distilledHotThreads);
             }
             return nodesToDistilledHotThreads;
         }
 
         private Response createResponse(
-            Map<String, List<String>> nodesToDistilledHotThreads,
+            Map<String, List<DistilledHotThread>> nodesToDistilledHotThreads,
             Map<String, Map<String, PipelineDetails>> nodeToPipelineInfoMap,
             Request.Mode mode
         ) {
@@ -593,7 +594,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             return pipelineConfigurationMap;
         }
 
-        record DistilledHotThread(double percent, List<String> activities, Set<String> products, String classification) {}
+        record DistilledHotThread(double percent, List<String> activities, String classification) {}
 
         record PipelineDetails(String name, long runtime, long totalNodeRuntime, List<ProcessorDetail> processorDetails) {}
 
@@ -612,17 +613,21 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             return Math.sqrt(variance);
         }
 
-        public static List<String> distillHotThreadsForSingleNode(boolean summarize, String threadDump) {
+        public static List<DistilledHotThread> distillHotThreadsForSingleNode(boolean summarize, String threadDump) {
             String[] lines = threadDump.split("\n");
             String firstLine = null;
             boolean watchIt = false;
             List<String> elasticStack = new ArrayList<>();
             double percent = -1;
+            List<DistilledHotThread> threadsSummaries = new ArrayList<>();
             List<String> threadSummaries = new ArrayList<>();
             for (String line : lines) {
                 if (line.isBlank()) {
                     if (firstLine != null && elasticStack.size() > 3) {
-                        threadSummaries.add(percent + "% " + getSummaryOfElasticStackForOneThread(elasticStack));
+                        Tuple<List<String>, String> summary = getSummaryOfElasticStackForOneThread(elasticStack);
+                        DistilledHotThread distilledHotThread = new DistilledHotThread(percent, summary.v1(), summary.v2());
+                        threadsSummaries.add(distilledHotThread);
+//                        threadSummaries.add(percent + "% " + summary.);
                     }
                     firstLine = null;
                     elasticStack = new ArrayList<>();
@@ -643,11 +648,11 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                     }
                 }
             }
-            return threadSummaries;
+            return threadsSummaries;
         }
     }
 
-    private static String getSummaryOfElasticStackForOneThread(List<String> elasticStack) {
+    private static Tuple<List<String>, String> getSummaryOfElasticStackForOneThread(List<String> elasticStack) {
         Set<String> reasons = new LinkedHashSet<>();
         Set<String> products = new LinkedHashSet<>();
         for (String stackElement : elasticStack.reversed()) {
@@ -727,9 +732,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             }
         }
         if (reasons.isEmpty()) {
-            return "unknown " + products.stream().collect(Collectors.joining(", ")) + " thread";
+            return Tuple.tuple(List.of("unknown " + products.stream().collect(Collectors.joining(", ")) + " thread"), "unknown");
         } else {
-            return reasons.stream().collect(Collectors.joining(", "));
+            return Tuple.tuple(reasons.stream().toList(), "unknown");
         }
     }
 }
