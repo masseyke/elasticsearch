@@ -74,7 +74,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
     public static final WhatIsMyClusterDoingAction INSTANCE = new WhatIsMyClusterDoingAction();
     public static final String NAME = "cluster:monitor/what_is_my_cluster_doing";
-    private static final String diagLocation = "/Users/keithmassey/sdh/8763/api-diagnostics-20250127-171211";
+    private static final String diagLocation = "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131";
 
     private WhatIsMyClusterDoingAction() {
         super(NAME);
@@ -82,12 +82,12 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
     public static class Response extends ActionResponse implements ToXContentObject {
         private final Map<String, List<String>> nodesToDistilledHotThreads;
-        private final Map<String, Map<String, Tuple<String, List<LocalAction.ProcessorDetail>>>> nodeToPipelineInfoMap;
+        private final Map<String, Map<String, LocalAction.PipelineDetails>> nodeToPipelineInfoMap;
         private final Request.Mode mode;
 
         public Response(
             Map<String, List<String>> nodesToDistilledHotThreads,
-            Map<String, Map<String, Tuple<String, List<LocalAction.ProcessorDetail>>>> nodeToPipelineInfoMap,
+            Map<String, Map<String, LocalAction.PipelineDetails>> nodeToPipelineInfoMap,
             Request.Mode mode
         ) {
             this.nodesToDistilledHotThreads = nodesToDistilledHotThreads;
@@ -138,19 +138,29 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 }
                 builder.endArray();
                 builder.startArray("pipelines");
-                Map<String, Tuple<String, List<LocalAction.ProcessorDetail>>> pipelinesForNode = nodeToPipelineInfoMap.get(nodeName);
+                Map<String, LocalAction.PipelineDetails> pipelinesForNode = nodeToPipelineInfoMap.get(nodeName);
                 if (pipelinesForNode != null) {
-                    for (Map.Entry<String, Tuple<String, List<LocalAction.ProcessorDetail>>> pipelineEntry : pipelinesForNode.entrySet()) {
+                    for (Map.Entry<String, LocalAction.PipelineDetails> pipelineEntry : pipelinesForNode.entrySet()) {
                         builder.startObject();
                         builder.field("name", pipelineEntry.getKey());
-                        builder.field("message", pipelineEntry.getValue().v1());
+                        String pipelineMessage = "Takes "
+                                + TimeValue.timeValueMillis(pipelineEntry.getValue().runtime).toHumanReadableString(1)
+                                + " out of a total of "
+                                + TimeValue.timeValueMillis(pipelineEntry.getValue().totalNodeRuntime).toHumanReadableString(1)
+                                + " on the node";
+                        builder.field("message", pipelineMessage); //TODO
                         builder.startArray("processors");
-                        for (LocalAction.ProcessorDetail processorDetail : pipelineEntry.getValue().v2()) {
+                        long pipelineTime = 0;
+                        for (LocalAction.ProcessorDetail processorDetail : pipelineEntry.getValue().processorDetails) {
                             builder.startObject();
                             builder.field("offset", processorDetail.index);
                             builder.field("type", processorDetail.type);
                             builder.field("name", processorDetail.name);
-                            builder.field("message", processorDetail.message);
+                            String message = "Takes "
+                                                + TimeValue.timeValueMillis(processorDetail.runtime).toHumanReadableString(1)
+                                                + " out of a total of "
+                                                + TimeValue.timeValueMillis(pipelineTime).toHumanReadableString(1);
+                            builder.field("message", message);
                             if (mode.equals(Request.Mode.VERBOSE) && processorDetail.detail != null) {
                                 builder.startObject("detail");
                                 for (Map.Entry<String, Object> detailEntry : processorDetail.detail.entrySet()) {
@@ -472,19 +482,19 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
         private Response createResponse(
             Map<String, List<String>> nodesToDistilledHotThreads,
-            Map<String, Map<String, Tuple<String, List<ProcessorDetail>>>> nodeToPipelineInfoMap,
+            Map<String, Map<String, PipelineDetails>> nodeToPipelineInfoMap,
             Request.Mode mode
         ) {
             return new Response(nodesToDistilledHotThreads, nodeToPipelineInfoMap, mode);
         }
 
         @SuppressWarnings("unchecked")
-        private Map<String, Map<String, Tuple<String, List<ProcessorDetail>>>> getNodeToPipelineMap(
+        private Map<String, Map<String, PipelineDetails>> getNodeToPipelineMap(
             Map<String, NodeStats> nodesMap,
             boolean demoMode
         ) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, IOException {
             // maps node name to list of pipelines tuple, which is pipeline name and list of processor messages (yes, it needs a class)
-            Map<String, Map<String, Tuple<String, List<ProcessorDetail>>>> nodeToPipelineInfoMap = new HashMap<>();
+            Map<String, Map<String, PipelineDetails>> nodeToPipelineInfoMap = new HashMap<>();
             for (Map.Entry<String, NodeStats> nodesMapEntry : nodesMap.entrySet()) {
                 String nodeName = nodesMapEntry.getValue().getNode().getName();
                 nodeToPipelineInfoMap.put(nodeName, new HashMap<>());
@@ -505,19 +515,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         long pipelineTime = entry.getValue();
                         String pipelineName = entry.getKey();
                         if ((pipelineTime - mean) > 2 * stdDev || pipelineTime > (0.5 * totalTimeInMillis)) {
-                            String pipelineMessage = "Takes "
-                                + TimeValue.timeValueMillis(entry.getValue()).toHumanReadableString(1)
-                                + " out of a total of "
-                                + TimeValue.timeValueMillis(totalTimeInMillis).toHumanReadableString(1)
-                                + " on the node";
                             List<ProcessorDetail> processorMessages = new ArrayList<>();
-                            nodeToPipelineInfoMap.get(nodeName).put(pipelineName, Tuple.tuple(pipelineMessage, processorMessages));
+                            nodeToPipelineInfoMap.get(nodeName).put(pipelineName, new PipelineDetails(pipelineName, pipelineTime, totalTimeInMillis, processorMessages));
                             List<IngestStats.ProcessorStat> processors = ingestStats.processorStats().get(pipelineName);
-                            List<Tuple<String, Long>> processorRuntimes = new ArrayList<>();
-                            for (IngestStats.ProcessorStat processorEntry : processors) {
-                                long processorTime = processorEntry.stats().ingestTimeInMillis();
-                                processorRuntimes.add(Tuple.tuple(processorEntry.name(), processorTime));
-                            }
                             Collection<Long> nonZeroProcessorTimes = processors.stream()
                                 .map(stat -> stat.stats().ingestTimeInMillis())
                                 .filter(stat -> stat > 0)
@@ -548,10 +548,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                             i,
                                             processorStat.type(),
                                             processorStat.name(),
-                                            "Takes "
-                                                + TimeValue.timeValueMillis(processorIngestTime).toHumanReadableString(1)
-                                                + " out of a total of "
-                                                + TimeValue.timeValueMillis(pipelineTime).toHumanReadableString(1),
+                                                processorIngestTime,
                                             detail
                                         )
                                     );
@@ -590,19 +587,17 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             for (Map<String, Object> pipeline : pipelinesList) {
                 String pipelineName = pipeline.get("id").toString();
                 Map<String, Object> config = (Map<String, Object>) pipeline.get("config");
-                // List<Map<String, Map<String, Object>>> processors = (List<Map<String, Map<String, Object>>>) config.get("processors");
-                // for (Map<String, Map<String, Object>> processor : processors) {
-                // String processorType = processor.keySet().iterator().next();
-                // Map<String, Object> details = processor.values().iterator().next();
-                //
-                // }
                 PipelineConfiguration pipelineConfiguration = new PipelineConfiguration(pipelineName, config);
                 pipelineConfigurationMap.put(pipelineName, pipelineConfiguration);
             }
             return pipelineConfigurationMap;
         }
 
-        record ProcessorDetail(int index, String type, String name, String message, Map<String, Object> detail) {}
+        record DistilledHotThread(double percent, List<String> activities, Set<String> products, String classification) {}
+
+        record PipelineDetails(String name, long runtime, long totalNodeRuntime, List<ProcessorDetail> processorDetails) {}
+
+        record ProcessorDetail(int index, String type, String name, long runtime, Map<String, Object> detail) {}
 
         private static double calculateMean(Collection<Long> data) {
             return data.stream().mapToDouble(Long::doubleValue).average().orElse(0);
