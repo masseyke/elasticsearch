@@ -123,8 +123,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             builder.startArray("nodes");
             for (Map.Entry<String, List<String>> entry : nodesToDistilledHotThreads.entrySet()) {
                 String nodeName = entry.getKey();
-                if (mode.equals(Request.Mode.VERBOSE) == false
-                    && entry.getValue().isEmpty()
+                if (entry.getValue().isEmpty()
                     && (nodeToPipelineInfoMap.get(nodeName) == null || nodeToPipelineInfoMap.get(nodeName).isEmpty())) {
                     continue;
                 }
@@ -148,7 +147,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         builder.startArray("processors");
                         for (LocalAction.ProcessorDetail processorDetail : pipelineEntry.getValue().v2()) {
                             builder.startObject();
-                            builder.field("index", processorDetail.index);
+                            builder.field("offset", processorDetail.index);
+                            builder.field("type", processorDetail.type);
                             builder.field("name", processorDetail.name);
                             builder.field("message", processorDetail.message);
                             if (mode.equals(Request.Mode.VERBOSE) && processorDetail.detail != null) {
@@ -495,7 +495,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                     List<IngestStats.PipelineStat> pipelineStats = ingestStats.pipelineStats();
                     for (IngestStats.PipelineStat pipelineStat : pipelineStats) {
                         long pipelineTimeInMillis = pipelineStat.stats().ingestTimeInMillis();
-                        pipelinesToTimes.put(pipelineStat.pipelineId(), pipelineTimeInMillis);
+                        if (pipelineTimeInMillis > 0) {
+                            pipelinesToTimes.put(pipelineStat.pipelineId(), pipelineTimeInMillis);
+                        }
                     }
                     double mean = calculateMean(pipelinesToTimes.values());
                     double stdDev = calculateStdDev(pipelinesToTimes.values(), mean);
@@ -516,9 +518,12 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                 long processorTime = processorEntry.stats().ingestTimeInMillis();
                                 processorRuntimes.add(Tuple.tuple(processorEntry.name(), processorTime));
                             }
-                            Collection<Long> processorTimes = processorRuntimes.stream().map(Tuple::v2).toList();
-                            double processorMean = calculateMean(processorTimes);
-                            double processorStdDev = calculateStdDev(processorTimes, mean);
+                            Collection<Long> nonZeroProcessorTimes = processors.stream()
+                                .map(stat -> stat.stats().ingestTimeInMillis())
+                                .filter(stat -> stat > 0)
+                                .toList();
+                            double processorMean = calculateMean(nonZeroProcessorTimes);
+                            double processorStdDev = calculateStdDev(nonZeroProcessorTimes, mean);
                             Map<String, PipelineConfiguration> pipelineConfigurationMap = demoMode
                                 ? getPipelineConfigurationMapFromDisk()
                                 : getPipelineConfigurationMap();
@@ -526,10 +531,11 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                             List<Map<String, Map<String, Object>>> processorConfigs = pipelineConfiguration == null
                                 ? null
                                 : (List<Map<String, Map<String, Object>>>) pipelineConfiguration.getConfig().get("processors");
-                            for (int i = 0; i < processorRuntimes.size(); i++) {
-                                Tuple<String, Long> processorRuntime = processorRuntimes.get(i);
-                                if ((processorRuntime.v2() - processorMean) > 2 * processorStdDev
-                                    || processorRuntime.v2() > 0.5 * pipelineTime) {
+                            for (int i = 0; i < processors.size(); i++) {
+                                IngestStats.ProcessorStat processorStat = processors.get(i);
+                                long processorIngestTime = processorStat.stats().ingestTimeInMillis();
+                                if ((processorIngestTime - processorMean) > 2 * processorStdDev
+                                    || processorIngestTime > 0.5 * pipelineTime) {
                                     Map<String, Object> detail;
                                     if (processorConfigs == null) {
                                         detail = null;
@@ -540,9 +546,10 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                     processorMessages.add(
                                         new ProcessorDetail(
                                             i,
-                                            processorRuntime.v1(),
+                                            processorStat.type(),
+                                            processorStat.name(),
                                             "Takes "
-                                                + TimeValue.timeValueMillis(processorRuntime.v2()).toHumanReadableString(1)
+                                                + TimeValue.timeValueMillis(processorIngestTime).toHumanReadableString(1)
                                                 + " out of a total of "
                                                 + TimeValue.timeValueMillis(pipelineTime).toHumanReadableString(1),
                                             detail
@@ -595,14 +602,10 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             return pipelineConfigurationMap;
         }
 
-        record ProcessorDetail(int index, String name, String message, Map<String, Object> detail) {}
+        record ProcessorDetail(int index, String type, String name, String message, Map<String, Object> detail) {}
 
         private static double calculateMean(Collection<Long> data) {
-            double sum = 0;
-            for (double num : data) {
-                sum += num;
-            }
-            return sum / data.size();
+            return data.stream().mapToDouble(Long::doubleValue).average().orElse(0);
         }
 
         private static double calculateStdDev(Collection<Long> data, double mean) {
