@@ -49,7 +49,7 @@ public class WhatsGoingOnTests extends ESTestCase {
             "/Users/keithmassey/sdh/8739/api-diagnostics-20250131-172326", // enrich, script slowness
             "/Users/keithmassey/sdh/8763/api-diagnostics-20250127-171211", // ml processor slowness
             "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131", // horrible grok
-            "/Users/keithmassey/sdh/8732/api-diagnostics-20250122-155818",
+            "/Users/keithmassey/sdh/8732/api-diagnostics-20250122-155818", // terrible script processor
             "/Users/keithmassey/sdh/8806/elastic/elasticsearch/elasticsearch"
         );
         for (String diagLocation : diagLocations) {

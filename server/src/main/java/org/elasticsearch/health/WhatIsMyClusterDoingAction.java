@@ -68,7 +68,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
     public static final WhatIsMyClusterDoingAction INSTANCE = new WhatIsMyClusterDoingAction();
     public static final String NAME = "cluster:monitor/what_is_my_cluster_doing";
-    private static final String diagLocation = "/Users/keithmassey/sdh/8732/api-diagnostics-20250122-155818";
+    private static final String diagLocation = "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131";
 
     private WhatIsMyClusterDoingAction() {
         super(NAME);
@@ -144,10 +144,13 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 .stream()
                 .sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
                 .toList()) {
-                builder.startObject();
-                builder.field("classification", classificationEntry.getKey());
-                builder.field("cpus_in_use", (int) (classificationEntry.getValue() / 100d));
-                builder.endObject();
+                int cpusInUse = (int) (classificationEntry.getValue() / 100d);
+                if (cpusInUse > 0) {
+                    builder.startObject();
+                    builder.field("classification", classificationEntry.getKey());
+                    builder.field("cpus_in_use", cpusInUse);
+                    builder.endObject();
+                }
             }
             builder.endArray();
 
@@ -209,10 +212,13 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                     .stream()
                     .sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
                     .toList()) {
-                    builder.startObject();
-                    builder.field("classification", classificationEntry.getKey());
-                    builder.field("cpus_in_use", (int) (classificationEntry.getValue() / 100d));
-                    builder.endObject();
+                    double cpusInUse = classificationEntry.getValue() / 100d;
+                    if (cpusInUse > 0.1) {
+                        builder.startObject();
+                        builder.field("classification", classificationEntry.getKey());
+                        builder.field("cpus_in_use", cpusInUse);
+                        builder.endObject();
+                    }
                 }
                 builder.endArray();
 
@@ -260,7 +266,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 builder.startObject();
                 builder.field("name", nodeName);
                 List<String> threadDescriptions = threads.stream()
-                    .map(thread -> thread.percent + "% " + thread.activities.stream().collect(Collectors.joining(", ")))
+                    .filter(thread -> thread.percent > 0)
+                    .map(thread -> thread.percent + "% " + String.join(", ", thread.activities))
                     .toList();
                 builder.startArray("threads");
                 for (String threadDescription : threadDescriptions) {
@@ -742,7 +749,6 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         public static List<DistilledHotThread> distillHotThreadsForSingleNode(boolean summarize, String threadDump) {
             String[] lines = threadDump.split("\n");
             String firstLine = null;
-            boolean watchIt = false;
             List<String> elasticStack = new ArrayList<>();
             double percent = -1;
             List<DistilledHotThread> threadsSummaries = new ArrayList<>();
@@ -761,14 +767,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 } else if (firstLine == null) {
                     firstLine = line;
                     percent = Double.valueOf(firstLine.substring(0, firstLine.indexOf("%")));
-                    if (percent > 1) {
-                        watchIt = true;
-                        elasticStack.add(firstLine);
-                    } else {
-                        watchIt = false;
-                    }
+                    elasticStack.add(firstLine);
                 } else {
-                    if (watchIt && (line.contains("elastic") || line.contains("netty") || line.contains("lucene"))) {
+                    if (line.contains("elastic") || line.contains("netty") || line.contains("lucene")) {
                         elasticStack.add(line);
                     }
                 }
