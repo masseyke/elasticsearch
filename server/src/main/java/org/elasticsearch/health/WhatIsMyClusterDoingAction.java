@@ -74,7 +74,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
     public static final WhatIsMyClusterDoingAction INSTANCE = new WhatIsMyClusterDoingAction();
     public static final String NAME = "cluster:monitor/what_is_my_cluster_doing";
-    private static final String diagLocation = "/Users/keithmassey/sdh/8739/api-diagnostics-20250131-172326";
+    private static final String diagLocation = "/Users/keithmassey/sdh/8763/api-diagnostics-20250127-171211";
 
     private WhatIsMyClusterDoingAction() {
         super(NAME);
@@ -239,6 +239,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             SubscribableListener.newForked(request.demoMode ? this::fetchHotThreadsFromDisk : this::fetchHotThreads)
                 .<NodesStatsResponse>andThen((l, hotThreadsResponse) -> {
                     nodesHotThreadsMap.set(distillHotThreads(hotThreadsResponse.getNodesMap()));
+                    hotThreadsResponse.decRef();
                     if (request.demoMode) {
                         fetchNodesStatsFromDisk(l);
                     } else {
@@ -272,7 +273,6 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
 
         private void fetchHotThreadsFromDisk(ActionListener<NodesHotThreadsResponse> listener) {
-            System.out.println("Loading " + diagLocation);
             Path filePath = Path.of(diagLocation, "nodes_hot_threads.txt");
             List<String> lines = null;
             try {
@@ -464,7 +464,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             for (Map.Entry<String, NodeHotThreads> entry : hotThreadsMap.entrySet()) {
                 NodeHotThreads hotThreads = entry.getValue();
                 String hotThreadsForNode = hotThreads.getHotThreads();
-                List<String> distilledHotThreads = distillSingleHotThread(entry.getKey(), hotThreadsForNode);
+                List<String> distilledHotThreads = distillHotThreadsForSingleNode(false, hotThreadsForNode);
                 nodesToDistilledHotThreads.put(hotThreads.getNode().getName(), distilledHotThreads);
             }
             return nodesToDistilledHotThreads;
@@ -614,7 +614,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             return Math.sqrt(variance);
         }
 
-        public static List<String> distillSingleHotThread(String node, String threadDump) {
+        public static List<String> distillHotThreadsForSingleNode(boolean summarize, String threadDump) {
             String[] lines = threadDump.split("\n");
             String firstLine = null;
             boolean watchIt = false;
@@ -624,7 +624,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             for (String line : lines) {
                 if (line.isBlank()) {
                     if (firstLine != null && elasticStack.size() > 3) {
-                        threadSummaries.add(percent + "% " + getSummaryOfElasticStack(elasticStack));
+                        threadSummaries.add(percent + "% " + getSummaryOfElasticStackForOneThread(elasticStack));
                     }
                     firstLine = null;
                     elasticStack = new ArrayList<>();
@@ -649,7 +649,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
     }
 
-    private static String getSummaryOfElasticStack(List<String> elasticStack) {
+    private static String getSummaryOfElasticStackForOneThread(List<String> elasticStack) {
         Set<String> reasons = new LinkedHashSet<>();
         Set<String> products = new LinkedHashSet<>();
         for (String stackElement : elasticStack.reversed()) {

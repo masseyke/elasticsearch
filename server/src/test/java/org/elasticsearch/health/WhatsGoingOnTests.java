@@ -46,7 +46,7 @@ public class WhatsGoingOnTests extends ESTestCase {
         List<String> diagLocations = List.of(
             "/Users/keithmassey/sdh/8689/api-diagnostics-20250108-163913", // audit logs
             "/Users/keithmassey/sdh/8707/remote-diagnostics-20250122-083338", // segment merging
-            "/Users/keithmassey/sdh/8739/api-diagnostics-20250131-172326",
+            "/Users/keithmassey/sdh/8739/api-diagnostics-20250131-172326", //enrich, script slowness
             "/Users/keithmassey/sdh/8763/api-diagnostics-20250127-171211",
             "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131",
             "/Users/keithmassey/sdh/8732/api-diagnostics-20250122-155818",
