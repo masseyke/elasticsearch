@@ -60,13 +60,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -74,7 +68,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
     public static final WhatIsMyClusterDoingAction INSTANCE = new WhatIsMyClusterDoingAction();
     public static final String NAME = "cluster:monitor/what_is_my_cluster_doing";
-    private static final String diagLocation = "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131";
+    private static final String diagLocation = "/Users/keithmassey/sdh/8732/api-diagnostics-20250122-155818";
 
     private WhatIsMyClusterDoingAction() {
         super(NAME);
@@ -119,18 +113,155 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
         @Override
         public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
+            return switch (mode) {
+                case SUPER_SUMMARY -> superSummaryToXContent(builder, params);
+                case SUMMARY -> summaryToXContent(builder, params);
+                case STANDARD, VERBOSE -> standardToXContent(builder, params);
+            };
+        }
+
+        public XContentBuilder superSummaryToXContent(XContentBuilder builder, Params params) throws IOException {
+            builder.startObject();
+            builder.startArray("activity");
+            Map<String, Double> classificationToPercentMap = new HashMap<>();
+            for (Map.Entry<String, List<LocalAction.DistilledHotThread>> entry : nodesToDistilledHotThreads.entrySet()) {
+                List<LocalAction.DistilledHotThread> threads = entry.getValue();
+                String nodeName = entry.getKey();
+                if (threads.isEmpty() && (nodeToPipelineInfoMap.get(nodeName) == null || nodeToPipelineInfoMap.get(nodeName).isEmpty())) {
+                    continue;
+                }
+                for (LocalAction.DistilledHotThread thread : threads) {
+                    double cpuPercent = thread.percent;
+                    String classification = thread.classification;
+                    if (classificationToPercentMap.containsKey(classification)) {
+                        classificationToPercentMap.put(classification, classificationToPercentMap.get(classification) + cpuPercent);
+                    } else {
+                        classificationToPercentMap.put(classification, cpuPercent);
+                    }
+                }
+            }
+            for (Map.Entry<String, Double> classificationEntry : classificationToPercentMap.entrySet()
+                .stream()
+                .sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
+                .toList()) {
+                builder.startObject();
+                builder.field("classification", classificationEntry.getKey());
+                builder.field("cpus_in_use", (int) (classificationEntry.getValue() / 100d));
+                builder.endObject();
+            }
+            builder.endArray();
+
+            builder.startArray("pipelines");
+            Map<String, Long> pipelineToRuntimeMap = new HashMap<>();
+            for (Map.Entry<String, Map<String, LocalAction.PipelineDetails>> nodePipelinesEntry : nodeToPipelineInfoMap.entrySet()) {
+                Map<String, LocalAction.PipelineDetails> nodePipelineDetails = nodePipelinesEntry.getValue();
+                for (LocalAction.PipelineDetails pipelineDetails : nodePipelineDetails.values()) {
+                    if (pipelineToRuntimeMap.containsKey(pipelineDetails.name)) {
+                        pipelineToRuntimeMap.put(
+                            pipelineDetails.name,
+                            pipelineToRuntimeMap.get(pipelineDetails.name) + pipelineDetails.runtime
+                        );
+                    } else {
+                        pipelineToRuntimeMap.put(pipelineDetails.name, pipelineDetails.runtime);
+                    }
+                }
+            }
+            for (Map.Entry<String, Long> pipelineEntry : pipelineToRuntimeMap.entrySet()
+                .stream()
+                .sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
+                .toList()) {
+                builder.startObject();
+                builder.field("pipeline", pipelineEntry.getKey());
+                builder.field("total_runtime", TimeValue.timeValueMillis(pipelineEntry.getValue()).toHumanReadableString(0));
+                builder.endObject();
+            }
+            builder.endArray();
+
+            builder.endObject();
+            return builder;
+        }
+
+        public XContentBuilder summaryToXContent(XContentBuilder builder, Params params) throws IOException {
             builder.startObject();
             builder.startArray("nodes");
             for (Map.Entry<String, List<LocalAction.DistilledHotThread>> entry : nodesToDistilledHotThreads.entrySet()) {
                 List<LocalAction.DistilledHotThread> threads = entry.getValue();
                 String nodeName = entry.getKey();
-                if (threads.isEmpty()
-                    && (nodeToPipelineInfoMap.get(nodeName) == null || nodeToPipelineInfoMap.get(nodeName).isEmpty())) {
+                if (threads.isEmpty() && (nodeToPipelineInfoMap.get(nodeName) == null || nodeToPipelineInfoMap.get(nodeName).isEmpty())) {
                     continue;
                 }
                 builder.startObject();
                 builder.field("name", nodeName);
-                List<String> threadDescriptions = threads.stream().map(thread -> thread.percent + "% " + thread.activities.stream().collect(Collectors.joining(", "))).toList();
+                Map<String, Double> classificationToPercentMap = new HashMap<>();
+                double totalCPU = 0;
+                for (LocalAction.DistilledHotThread thread : threads) {
+                    double cpuPercent = thread.percent;
+                    totalCPU += cpuPercent;
+                    String classification = thread.classification;
+                    if (classificationToPercentMap.containsKey(classification)) {
+                        classificationToPercentMap.put(classification, classificationToPercentMap.get(classification) + cpuPercent);
+                    } else {
+                        classificationToPercentMap.put(classification, cpuPercent);
+                    }
+                }
+                builder.startArray("activity");
+                for (Map.Entry<String, Double> classificationEntry : classificationToPercentMap.entrySet()
+                    .stream()
+                    .sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
+                    .toList()) {
+                    builder.startObject();
+                    builder.field("classification", classificationEntry.getKey());
+                    builder.field("cpus_in_use", (int) (classificationEntry.getValue() / 100d));
+                    builder.endObject();
+                }
+                builder.endArray();
+
+                builder.startArray("pipelines");
+                Map<String, Long> pipelineToRuntimeMap = new HashMap<>();
+                for (Map.Entry<String, Map<String, LocalAction.PipelineDetails>> nodePipelinesEntry : nodeToPipelineInfoMap.entrySet()) {
+                    Map<String, LocalAction.PipelineDetails> nodePipelineDetails = nodePipelinesEntry.getValue();
+                    for (LocalAction.PipelineDetails pipelineDetails : nodePipelineDetails.values()) {
+                        if (pipelineToRuntimeMap.containsKey(pipelineDetails.name)) {
+                            pipelineToRuntimeMap.put(
+                                pipelineDetails.name,
+                                pipelineToRuntimeMap.get(pipelineDetails.name) + pipelineDetails.runtime
+                            );
+                        } else {
+                            pipelineToRuntimeMap.put(pipelineDetails.name, pipelineDetails.runtime);
+                        }
+                    }
+                }
+                for (Map.Entry<String, Long> pipelineEntry : pipelineToRuntimeMap.entrySet()
+                    .stream()
+                    .sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
+                    .toList()) {
+                    builder.startObject();
+                    builder.field("pipeline", pipelineEntry.getKey());
+                    builder.field("total_runtime", TimeValue.timeValueMillis(pipelineEntry.getValue()).toHumanReadableString(1));
+                    builder.endObject();
+                }
+                builder.endArray();
+                builder.endObject();
+            }
+            builder.endArray();
+            builder.endObject();
+            return builder;
+        }
+
+        public XContentBuilder standardToXContent(XContentBuilder builder, Params params) throws IOException {
+            builder.startObject();
+            builder.startArray("nodes");
+            for (Map.Entry<String, List<LocalAction.DistilledHotThread>> entry : nodesToDistilledHotThreads.entrySet()) {
+                List<LocalAction.DistilledHotThread> threads = entry.getValue();
+                String nodeName = entry.getKey();
+                if (threads.isEmpty() && (nodeToPipelineInfoMap.get(nodeName) == null || nodeToPipelineInfoMap.get(nodeName).isEmpty())) {
+                    continue;
+                }
+                builder.startObject();
+                builder.field("name", nodeName);
+                List<String> threadDescriptions = threads.stream()
+                    .map(thread -> thread.percent + "% " + thread.activities.stream().collect(Collectors.joining(", ")))
+                    .toList();
                 builder.startArray("threads");
                 for (String threadDescription : threadDescriptions) {
                     builder.startObject();
@@ -145,11 +276,11 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         builder.startObject();
                         builder.field("name", pipelineEntry.getKey());
                         String pipelineMessage = "Takes "
-                                + TimeValue.timeValueMillis(pipelineEntry.getValue().runtime).toHumanReadableString(1)
-                                + " out of a total of "
-                                + TimeValue.timeValueMillis(pipelineEntry.getValue().totalNodeRuntime).toHumanReadableString(1)
-                                + " on the node";
-                        builder.field("message", pipelineMessage); //TODO
+                            + TimeValue.timeValueMillis(pipelineEntry.getValue().runtime).toHumanReadableString(1)
+                            + " out of a total of "
+                            + TimeValue.timeValueMillis(pipelineEntry.getValue().totalNodeRuntime).toHumanReadableString(1)
+                            + " on the node";
+                        builder.field("message", pipelineMessage); // TODO
                         builder.startArray("processors");
                         long pipelineTime = 0;
                         for (LocalAction.ProcessorDetail processorDetail : pipelineEntry.getValue().processorDetails) {
@@ -158,9 +289,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                             builder.field("type", processorDetail.type);
                             builder.field("name", processorDetail.name);
                             String message = "Takes "
-                                                + TimeValue.timeValueMillis(processorDetail.runtime).toHumanReadableString(1)
-                                                + " out of a total of "
-                                                + TimeValue.timeValueMillis(pipelineTime).toHumanReadableString(1);
+                                + TimeValue.timeValueMillis(processorDetail.runtime).toHumanReadableString(1)
+                                + " out of a total of "
+                                + TimeValue.timeValueMillis(pipelineTime).toHumanReadableString(1);
                             builder.field("message", message);
                             if (mode.equals(Request.Mode.VERBOSE) && processorDetail.detail != null) {
                                 builder.startObject("detail");
@@ -187,6 +318,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
     public static class Request extends ActionRequest {
         public enum Mode {
+            SUPER_SUMMARY,
             SUMMARY,
             STANDARD,
             VERBOSE
@@ -250,7 +382,6 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             SubscribableListener.newForked(request.demoMode ? this::fetchHotThreadsFromDisk : this::fetchHotThreads)
                 .<NodesStatsResponse>andThen((l, hotThreadsResponse) -> {
                     nodesHotThreadsMap.set(distillHotThreads(hotThreadsResponse.getNodesMap()));
-                    hotThreadsResponse.decRef();
                     if (request.demoMode) {
                         fetchNodesStatsFromDisk(l);
                     } else {
@@ -336,7 +467,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             nodes.add(nodeHotThreads);
             ClusterName clusterName = new ClusterName("cluster");
             List<FailedNodeException> failedNodeExceptions = List.of();
-            listener.onResponse(new NodesHotThreadsResponse(clusterName, nodes, failedNodeExceptions));
+            NodesHotThreadsResponse hotThreadsResponse = new NodesHotThreadsResponse(clusterName, nodes, failedNodeExceptions);
+            hotThreadsResponse.decRef();
+            listener.onResponse(hotThreadsResponse);
         }
 
         private void fetchNodesStats(ActionListener<NodesStatsResponse> listener) {
@@ -490,10 +623,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
 
         @SuppressWarnings("unchecked")
-        private Map<String, Map<String, PipelineDetails>> getNodeToPipelineMap(
-            Map<String, NodeStats> nodesMap,
-            boolean demoMode
-        ) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, IOException {
+        private Map<String, Map<String, PipelineDetails>> getNodeToPipelineMap(Map<String, NodeStats> nodesMap, boolean demoMode)
+            throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, IOException {
             // maps node name to list of pipelines tuple, which is pipeline name and list of processor messages (yes, it needs a class)
             Map<String, Map<String, PipelineDetails>> nodeToPipelineInfoMap = new HashMap<>();
             for (Map.Entry<String, NodeStats> nodesMapEntry : nodesMap.entrySet()) {
@@ -517,7 +648,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         String pipelineName = entry.getKey();
                         if ((pipelineTime - mean) > 2 * stdDev || pipelineTime > (0.5 * totalTimeInMillis)) {
                             List<ProcessorDetail> processorMessages = new ArrayList<>();
-                            nodeToPipelineInfoMap.get(nodeName).put(pipelineName, new PipelineDetails(pipelineName, pipelineTime, totalTimeInMillis, processorMessages));
+                            nodeToPipelineInfoMap.get(nodeName)
+                                .put(pipelineName, new PipelineDetails(pipelineName, pipelineTime, totalTimeInMillis, processorMessages));
                             List<IngestStats.ProcessorStat> processors = ingestStats.processorStats().get(pipelineName);
                             Collection<Long> nonZeroProcessorTimes = processors.stream()
                                 .map(stat -> stat.stats().ingestTimeInMillis())
@@ -545,13 +677,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                         detail = processorConfig.values().iterator().next();
                                     }
                                     processorMessages.add(
-                                        new ProcessorDetail(
-                                            i,
-                                            processorStat.type(),
-                                            processorStat.name(),
-                                                processorIngestTime,
-                                            detail
-                                        )
+                                        new ProcessorDetail(i, processorStat.type(), processorStat.name(), processorIngestTime, detail)
                                     );
                                 }
                             }
@@ -620,23 +746,22 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             List<String> elasticStack = new ArrayList<>();
             double percent = -1;
             List<DistilledHotThread> threadsSummaries = new ArrayList<>();
-            List<String> threadSummaries = new ArrayList<>();
             for (String line : lines) {
                 if (line.isBlank()) {
                     if (firstLine != null && elasticStack.size() > 3) {
                         Tuple<List<String>, String> summary = getSummaryOfElasticStackForOneThread(elasticStack);
                         DistilledHotThread distilledHotThread = new DistilledHotThread(percent, summary.v1(), summary.v2());
                         threadsSummaries.add(distilledHotThread);
-//                        threadSummaries.add(percent + "% " + summary.);
                     }
                     firstLine = null;
                     elasticStack = new ArrayList<>();
+                    percent = -1;
                 } else if (line.contains("Hot threads at ")) {
                     // skip
                 } else if (firstLine == null) {
                     firstLine = line;
                     percent = Double.valueOf(firstLine.substring(0, firstLine.indexOf("%")));
-                    if (percent > 50) {
+                    if (percent > 1) {
                         watchIt = true;
                         elasticStack.add(firstLine);
                     } else {
@@ -652,61 +777,94 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
     }
 
+    enum Classification {
+        LOGGING,
+        AUTH,
+        PIPELINES,
+        INDEXING,
+        SEARCH,
+        ENRICH,
+        ML,
+        SYSTEM_BACKGROUND_TASKS,
+        UNKONWN
+    }
+
     private static Tuple<List<String>, String> getSummaryOfElasticStackForOneThread(List<String> elasticStack) {
         Set<String> reasons = new LinkedHashSet<>();
         Set<String> products = new LinkedHashSet<>();
+        Set<Classification> potentialClassifications = new HashSet<>();
         for (String stackElement : elasticStack.reversed()) {
             if (stackElement.contains("[transport_worker]")) {
                 reasons.add("TRANSPORT");
+                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
             }
             if (stackElement.contains("org.elasticsearch.ingest.IngestService")) {
                 reasons.add("ingesting data through pipelines");
+                potentialClassifications.add(Classification.PIPELINES);
             } else if (stackElement.contains("org.elasticsearch.action.bulk.TransportShardBulkAction")) {
                 reasons.add("indexing data into indices");
+                potentialClassifications.add(Classification.INDEXING);
             } else if (stackElement.contains("RestBulkAction")) {
                 reasons.add("reading rest request to index data into indices");
+                potentialClassifications.add(Classification.INDEXING);
             } else if (stackElement.contains("org.elasticsearch.xpack.enrich.EnrichProcessorFactory")) {
                 reasons.add("enriching data");
+                potentialClassifications.add(Classification.ENRICH);
             } else if (stackElement.contains("org.elasticsearch.index.engine.ElasticsearchConcurrentMergeScheduler.doMerge")
                 || stackElement.contains("SegmentMerger")) {
                     reasons.add("maintenance -- merging segments");
+                    potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                 } else if (stackElement.contains("org.elasticsearch.search.SearchService")
                     || stackElement.contains("org.elasticsearch.search.internal.ContextIndexSearcher.search")
                     || stackElement.contains("TransportSearchAction")
                     || stackElement.contains("org.elasticsearch.action.search")) {
                         reasons.add("executing search requests");
+                        potentialClassifications.add(Classification.SEARCH);
                     } else if (stackElement.contains("searchable_snapshots_cache_prewarming")
                         || stackElement.contains("searchable_snapshots_cache_fetch_async")) {
                             reasons.add("maintenance -- prewarming the cache from searchable snapshots");
+                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                         } else if (stackElement.contains("org.elasticsearch.repositories.blobstore.ShardSnapshotTaskRunner")) {
                             reasons.add("maintenance -- snapshotting data for backup");
+                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                         } else if (stackElement.contains("org.elasticsearch.xpack.security.audit.logfile.LoggingAuditTrail")) {
                             reasons.add("writing audit logs of user activity");
+                            potentialClassifications.add(Classification.LOGGING);
                         } else if (stackElement.contains("[flush]")) {
                             reasons.add("maintenance -- flushing data to disk");
+                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                         } else if (stackElement.contains(
                             "org.elasticsearch.rest.RestController$EncodedLengthTrackingChunkedRestResponseBodyPart.encodeChunk"
                         )) {
                             reasons.add("reading potentially large data from request");
+                            potentialClassifications.add(Classification.UNKONWN);
                         } else if (stackElement.contains("org.elasticsearch.xpack.monitoring.exporter.Exporters.export")) {
                             reasons.add("exporting data for Monitoring");
+                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                         } else if (reasons.isEmpty() && stackElement.contains("[write]")) {
                             reasons.add("writing data possibly through an ingest pipeline");
+                            potentialClassifications.add(Classification.PIPELINES);
                         } else if (stackElement.contains(
                             "org.elasticsearch.repositories.blobstore.BlobStoreRepository.deleteFromContainer"
                         )) {
                             reasons.add("deleting item from snapshot repository");
+                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                         } else if (stackElement.contains("org.elasticsearch.indices.recovery.PeerRecoveryTargetService")
                             || stackElement.contains("org.elasticsearch.indices.recovery")) {
                                 reasons.add("maintenance -- peer recovery");
+                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                             } else if (stackElement.contains("maybeRefresh")) {
                                 reasons.add("maintenance -- refreshing indices");
+                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                             } else if (stackElement.contains("admin.cluster.stats")) {
                                 reasons.add("gathering cluster stats");
+                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                             } else if (stackElement.contains("org.elasticsearch.cluster.service.MasterService")) {
                                 reasons.add("maintenance -- master node");
+                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                             } else if (stackElement.contains("ShardsAllocator")) {
                                 reasons.add("maintenance -- balancing shards");
+                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                             } else if (stackElement.contains("Processor") && stackElement.contains("CompoundProcessor") == false) {
                                 String firstHalfOfLine = stackElement.substring(0, stackElement.indexOf("Processor"));
                                 String processorName = firstHalfOfLine.substring(firstHalfOfLine.lastIndexOf(".") + 1).toLowerCase();
@@ -715,13 +873,17 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                     && processorName.contains("continuouscomputation$") == false
                                     && processorName.contains("asyncio") == false) {
                                     reasons.add("running " + processorName + " processor");
+                                    potentialClassifications.add(Classification.PIPELINES);
                                 }
                             } else if (stackElement.contains("io.netty.handler.ssl.SslHandler.flush")) {
                                 reasons.add("returning potentially large response");
+                                potentialClassifications.add(Classification.UNKONWN);
                             } else if (stackElement.contains("org.elasticsearch.xpack.ml")) {
                                 reasons.add("machine learning");
+                                potentialClassifications.add(Classification.ML);
                             } else if (stackElement.contains("RBACEngine")) {
                                 reasons.add("authentication");
+                                potentialClassifications.add(Classification.AUTH);
                             }
             if (stackElement.contains("elastic") && stackElement.contains("%") == false) {
                 products.add("elastic");
@@ -731,10 +893,16 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 products.add("lucene");
             }
         }
+        String classification = potentialClassifications.stream()
+            .sorted()
+            .findFirst()
+            .orElse(Classification.UNKONWN)
+            .toString()
+            .toLowerCase();
         if (reasons.isEmpty()) {
-            return Tuple.tuple(List.of("unknown " + products.stream().collect(Collectors.joining(", ")) + " thread"), "unknown");
+            return Tuple.tuple(List.of("unknown " + products.stream().collect(Collectors.joining(", ")) + " thread"), classification);
         } else {
-            return Tuple.tuple(reasons.stream().toList(), "unknown");
+            return Tuple.tuple(reasons.stream().toList(), classification);
         }
     }
 }
