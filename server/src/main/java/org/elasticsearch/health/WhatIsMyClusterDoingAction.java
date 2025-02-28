@@ -38,6 +38,7 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.transport.TransportAddress;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.common.xcontent.XContentHelper;
+import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.health.stats.HealthApiStats;
@@ -190,16 +191,16 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             for (Map.Entry<String, List<LocalAction.DistilledHotThread>> entry : nodesToDistilledHotThreads.entrySet()) {
                 List<LocalAction.DistilledHotThread> threads = entry.getValue();
                 String nodeName = entry.getKey();
-                if (threads.isEmpty() && (nodeToPipelineInfoMap.get(nodeName) == null || nodeToPipelineInfoMap.get(nodeName).isEmpty())) {
+                List<LocalAction.DistilledHotThread> filteredThreads = threads.stream().filter(thread -> thread.percent > 50).toList();
+                Map<String, Map<String, LocalAction.PipelineDetails>> filteredNodeToPipelineInfoMap = nodeToPipelineInfoMap.entrySet().stream().filter(e -> e.getValue().isEmpty() == false).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                if (filteredThreads.isEmpty() && (filteredNodeToPipelineInfoMap.get(nodeName) == null || filteredNodeToPipelineInfoMap.get(nodeName).isEmpty())) {
                     continue;
                 }
                 builder.startObject();
                 builder.field("name", nodeName);
                 Map<String, Double> classificationToPercentMap = new HashMap<>();
-                double totalCPU = 0;
-                for (LocalAction.DistilledHotThread thread : threads) {
+                for (LocalAction.DistilledHotThread thread : filteredThreads) {
                     double cpuPercent = thread.percent;
-                    totalCPU += cpuPercent;
                     String classification = thread.classification;
                     if (classificationToPercentMap.containsKey(classification)) {
                         classificationToPercentMap.put(classification, classificationToPercentMap.get(classification) + cpuPercent);
@@ -223,27 +224,11 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 builder.endArray();
 
                 builder.startArray("pipelines");
-                Map<String, Long> pipelineToRuntimeMap = new HashMap<>();
-                for (Map.Entry<String, Map<String, LocalAction.PipelineDetails>> nodePipelinesEntry : nodeToPipelineInfoMap.entrySet()) {
-                    Map<String, LocalAction.PipelineDetails> nodePipelineDetails = nodePipelinesEntry.getValue();
-                    for (LocalAction.PipelineDetails pipelineDetails : nodePipelineDetails.values()) {
-                        if (pipelineToRuntimeMap.containsKey(pipelineDetails.name)) {
-                            pipelineToRuntimeMap.put(
-                                pipelineDetails.name,
-                                pipelineToRuntimeMap.get(pipelineDetails.name) + pipelineDetails.runtime
-                            );
-                        } else {
-                            pipelineToRuntimeMap.put(pipelineDetails.name, pipelineDetails.runtime);
-                        }
-                    }
-                }
-                for (Map.Entry<String, Long> pipelineEntry : pipelineToRuntimeMap.entrySet()
-                    .stream()
-                    .sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
-                    .toList()) {
+                Map<String, LocalAction.PipelineDetails> nodePipelineDetails = nodeToPipelineInfoMap.get(nodeName);
+                for (LocalAction.PipelineDetails pipelineDetails : nodePipelineDetails.values().stream().sorted((o1, o2) -> Long.compare(o2.runtime, o1.runtime)).toList()) {
                     builder.startObject();
-                    builder.field("pipeline", pipelineEntry.getKey());
-                    builder.field("total_runtime", TimeValue.timeValueMillis(pipelineEntry.getValue()).toHumanReadableString(1));
+                    builder.field("pipeline", pipelineDetails.name);
+                    builder.field("total_runtime", TimeValue.timeValueMillis(pipelineDetails.runtime).toHumanReadableString(1));
                     builder.endObject();
                 }
                 builder.endArray();
@@ -260,19 +245,18 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             for (Map.Entry<String, List<LocalAction.DistilledHotThread>> entry : nodesToDistilledHotThreads.entrySet()) {
                 List<LocalAction.DistilledHotThread> threads = entry.getValue();
                 String nodeName = entry.getKey();
-                if (threads.isEmpty() && (nodeToPipelineInfoMap.get(nodeName) == null || nodeToPipelineInfoMap.get(nodeName).isEmpty())) {
+                List<LocalAction.DistilledHotThread> filteredThreads = threads.stream().filter(thread -> thread.percent > 50).toList();
+                Map<String, Map<String, LocalAction.PipelineDetails>> filteredNodeToPipelineInfoMap = nodeToPipelineInfoMap.entrySet().stream().filter(e -> e.getValue().isEmpty() == false).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                if (filteredThreads.isEmpty() && (filteredNodeToPipelineInfoMap.get(nodeName) == null || filteredNodeToPipelineInfoMap.get(nodeName).isEmpty())) {
                     continue;
                 }
                 builder.startObject();
                 builder.field("name", nodeName);
-                List<String> threadDescriptions = threads.stream()
-                    .filter(thread -> thread.percent > 0)
-                    .map(thread -> thread.percent + "% " + String.join(", ", thread.activities))
-                    .toList();
                 builder.startArray("threads");
-                for (String threadDescription : threadDescriptions) {
+                for (LocalAction.DistilledHotThread thread : filteredThreads) {
                     builder.startObject();
-                    builder.field("summary", threadDescription);
+                    builder.field("summary", thread.percent + "% " + String.join(", ", thread.activities));
+                    builder.field("classification", thread.classification);
                     builder.endObject();
                 }
                 builder.endArray();
@@ -287,9 +271,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                             + " out of a total of "
                             + TimeValue.timeValueMillis(pipelineEntry.getValue().totalNodeRuntime).toHumanReadableString(1)
                             + " on the node";
-                        builder.field("message", pipelineMessage); // TODO
+                        builder.field("message", pipelineMessage);
                         builder.startArray("processors");
-                        long pipelineTime = 0;
+                        long pipelineTime = pipelineEntry.getValue().runtime;
                         for (LocalAction.ProcessorDetail processorDetail : pipelineEntry.getValue().processorDetails) {
                             builder.startObject();
                             builder.field("offset", processorDetail.index);
@@ -331,12 +315,14 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             VERBOSE
         }
 
-        private final boolean demoMode;
         private final Mode mode;
+        private final String node;
+        private final boolean demoMode;
 
-        public Request(Mode mode, boolean demoMode) {
-            this.demoMode = demoMode;
+        public Request(Mode mode, @Nullable String node, boolean demoMode) {
             this.mode = mode;
+            this.node = node;
+            this.demoMode = demoMode;
         }
 
         @Override
@@ -368,9 +354,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             TransportService transportService,
             ClusterService clusterService,
             IngestService ingestService,
-            HealthService healthService,
-            NodeClient client,
-            HealthApiStats healthApiStats
+            NodeClient client
         ) {
             super(NAME, actionFilters, transportService.getTaskManager(), EsExecutors.DIRECT_EXECUTOR_SERVICE);
             this.clusterService = clusterService;
@@ -388,7 +372,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             AtomicReference<Map<String, List<DistilledHotThread>>> nodesHotThreadsMap = new AtomicReference<>();
             SubscribableListener.newForked(request.demoMode ? this::fetchHotThreadsFromDisk : this::fetchHotThreads)
                 .<NodesStatsResponse>andThen((l, hotThreadsResponse) -> {
-                    nodesHotThreadsMap.set(distillHotThreads(hotThreadsResponse.getNodesMap()));
+                    nodesHotThreadsMap.set(distillHotThreads(hotThreadsResponse.getNodesMap(), request.node));
                     if (request.demoMode) {
                         fetchNodesStatsFromDisk(l);
                     } else {
@@ -398,7 +382,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 .andThenApply(
                     nodesStatsResponse -> createResponse(
                         nodesHotThreadsMap.get(),
-                        getNodeToPipelineMap(nodesStatsResponse.getNodesMap(), request.demoMode),
+                        getNodeToPipelineMap(nodesStatsResponse.getNodesMap(), request.node, request.demoMode),
                         request.mode
                     )
                 )
@@ -610,13 +594,15 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             listener.onResponse(new NodesStatsResponse(clusterName, nodes, failedNodeExceptions));
         }
 
-        public static Map<String, List<DistilledHotThread>> distillHotThreads(Map<String, NodeHotThreads> hotThreadsMap) {
+        public static Map<String, List<DistilledHotThread>> distillHotThreads(Map<String, NodeHotThreads> hotThreadsMap, @Nullable String node) {
             Map<String, List<DistilledHotThread>> nodesToDistilledHotThreads = new HashMap<>();
             for (Map.Entry<String, NodeHotThreads> entry : hotThreadsMap.entrySet()) {
-                NodeHotThreads hotThreads = entry.getValue();
-                String hotThreadsForNode = hotThreads.getHotThreads();
-                List<DistilledHotThread> distilledHotThreads = distillHotThreadsForSingleNode(false, hotThreadsForNode);
-                nodesToDistilledHotThreads.put(hotThreads.getNode().getName(), distilledHotThreads);
+                if (node == null || node.equals(entry.getKey())) {
+                    NodeHotThreads hotThreads = entry.getValue();
+                    String hotThreadsForNode = hotThreads.getHotThreads();
+                    List<DistilledHotThread> distilledHotThreads = distillHotThreadsForSingleNode(false, hotThreadsForNode);
+                    nodesToDistilledHotThreads.put(hotThreads.getNode().getName(), distilledHotThreads);
+                }
             }
             return nodesToDistilledHotThreads;
         }
@@ -630,67 +616,69 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
 
         @SuppressWarnings("unchecked")
-        private Map<String, Map<String, PipelineDetails>> getNodeToPipelineMap(Map<String, NodeStats> nodesMap, boolean demoMode)
+        private Map<String, Map<String, PipelineDetails>> getNodeToPipelineMap(Map<String, NodeStats> nodesMap, String node, boolean demoMode)
             throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, IOException {
             // maps node name to list of pipelines tuple, which is pipeline name and list of processor messages (yes, it needs a class)
             Map<String, Map<String, PipelineDetails>> nodeToPipelineInfoMap = new HashMap<>();
             for (Map.Entry<String, NodeStats> nodesMapEntry : nodesMap.entrySet()) {
                 String nodeName = nodesMapEntry.getValue().getNode().getName();
-                nodeToPipelineInfoMap.put(nodeName, new HashMap<>());
-                IngestStats ingestStats = nodesMapEntry.getValue().getIngestStats();
-                if (ingestStats != null) {
-                    long totalTimeInMillis = ingestStats.totalStats().ingestTimeInMillis();
-                    Map<String, Long> pipelinesToTimes = new HashMap<>();
-                    List<IngestStats.PipelineStat> pipelineStats = ingestStats.pipelineStats();
-                    for (IngestStats.PipelineStat pipelineStat : pipelineStats) {
-                        long pipelineTimeInMillis = pipelineStat.stats().ingestTimeInMillis();
-                        if (pipelineTimeInMillis > 0) {
-                            pipelinesToTimes.put(pipelineStat.pipelineId(), pipelineTimeInMillis);
+                if (node == null || node.equals(nodeName)) {
+                    nodeToPipelineInfoMap.put(nodeName, new HashMap<>());
+                    IngestStats ingestStats = nodesMapEntry.getValue().getIngestStats();
+                    if (ingestStats != null) {
+                        long totalTimeInMillis = ingestStats.totalStats().ingestTimeInMillis();
+                        Map<String, Long> pipelinesToTimes = new HashMap<>();
+                        List<IngestStats.PipelineStat> pipelineStats = ingestStats.pipelineStats();
+                        for (IngestStats.PipelineStat pipelineStat : pipelineStats) {
+                            long pipelineTimeInMillis = pipelineStat.stats().ingestTimeInMillis();
+                            if (pipelineTimeInMillis > 0) {
+                                pipelinesToTimes.put(pipelineStat.pipelineId(), pipelineTimeInMillis);
+                            }
                         }
-                    }
-                    double mean = calculateMean(pipelinesToTimes.values());
-                    double stdDev = calculateStdDev(pipelinesToTimes.values(), mean);
-                    for (Map.Entry<String, Long> entry : pipelinesToTimes.entrySet()) {
-                        long pipelineTime = entry.getValue();
-                        String pipelineName = entry.getKey();
-                        if ((pipelineTime - mean) > 2 * stdDev || pipelineTime > (0.5 * totalTimeInMillis)) {
-                            List<ProcessorDetail> processorMessages = new ArrayList<>();
-                            nodeToPipelineInfoMap.get(nodeName)
-                                .put(pipelineName, new PipelineDetails(pipelineName, pipelineTime, totalTimeInMillis, processorMessages));
-                            List<IngestStats.ProcessorStat> processors = ingestStats.processorStats().get(pipelineName);
-                            Collection<Long> nonZeroProcessorTimes = processors.stream()
-                                .map(stat -> stat.stats().ingestTimeInMillis())
-                                .filter(stat -> stat > 0)
-                                .toList();
-                            double processorMean = calculateMean(nonZeroProcessorTimes);
-                            double processorStdDev = calculateStdDev(nonZeroProcessorTimes, mean);
-                            Map<String, PipelineConfiguration> pipelineConfigurationMap = demoMode
-                                ? getPipelineConfigurationMapFromDisk()
-                                : getPipelineConfigurationMap();
-                            PipelineConfiguration pipelineConfiguration = pipelineConfigurationMap.get(pipelineName);
-                            List<Map<String, Map<String, Object>>> processorConfigs = pipelineConfiguration == null
-                                ? null
-                                : (List<Map<String, Map<String, Object>>>) pipelineConfiguration.getConfig().get("processors");
-                            for (int i = 0; i < processors.size(); i++) {
-                                IngestStats.ProcessorStat processorStat = processors.get(i);
-                                long processorIngestTime = processorStat.stats().ingestTimeInMillis();
-                                if ((processorIngestTime - processorMean) > 2 * processorStdDev
-                                    || processorIngestTime > 0.5 * pipelineTime) {
-                                    Map<String, Object> detail;
-                                    if (processorConfigs == null) {
-                                        detail = null;
-                                    } else {
-                                        Map<String, Map<String, Object>> processorConfig = processorConfigs.get(i);
-                                        detail = processorConfig.values().iterator().next();
+                        double mean = calculateMean(pipelinesToTimes.values());
+                        double stdDev = calculateStdDev(pipelinesToTimes.values(), mean);
+                        for (Map.Entry<String, Long> entry : pipelinesToTimes.entrySet()) {
+                            long pipelineTime = entry.getValue();
+                            String pipelineName = entry.getKey();
+                            if ((pipelineTime - mean) > 2 * stdDev || pipelineTime > (0.5 * totalTimeInMillis)) {
+                                List<ProcessorDetail> processorMessages = new ArrayList<>();
+                                nodeToPipelineInfoMap.get(nodeName)
+                                    .put(pipelineName, new PipelineDetails(pipelineName, pipelineTime, totalTimeInMillis, processorMessages));
+                                List<IngestStats.ProcessorStat> processors = ingestStats.processorStats().get(pipelineName);
+                                Collection<Long> nonZeroProcessorTimes = processors.stream()
+                                    .map(stat -> stat.stats().ingestTimeInMillis())
+                                    .filter(stat -> stat > 0)
+                                    .toList();
+                                double processorMean = calculateMean(nonZeroProcessorTimes);
+                                double processorStdDev = calculateStdDev(nonZeroProcessorTimes, mean);
+                                Map<String, PipelineConfiguration> pipelineConfigurationMap = demoMode
+                                    ? getPipelineConfigurationMapFromDisk()
+                                    : getPipelineConfigurationMap();
+                                PipelineConfiguration pipelineConfiguration = pipelineConfigurationMap.get(pipelineName);
+                                List<Map<String, Map<String, Object>>> processorConfigs = pipelineConfiguration == null
+                                    ? null
+                                    : (List<Map<String, Map<String, Object>>>) pipelineConfiguration.getConfig().get("processors");
+                                for (int i = 0; i < processors.size(); i++) {
+                                    IngestStats.ProcessorStat processorStat = processors.get(i);
+                                    long processorIngestTime = processorStat.stats().ingestTimeInMillis();
+                                    if ((processorIngestTime - processorMean) > 2 * processorStdDev
+                                        || processorIngestTime > 0.5 * pipelineTime) {
+                                        Map<String, Object> detail;
+                                        if (processorConfigs == null) {
+                                            detail = null;
+                                        } else {
+                                            Map<String, Map<String, Object>> processorConfig = processorConfigs.get(i);
+                                            detail = processorConfig.values().iterator().next();
+                                        }
+                                        processorMessages.add(
+                                            new ProcessorDetail(i, processorStat.type(), processorStat.name(), processorIngestTime, detail)
+                                        );
                                     }
-                                    processorMessages.add(
-                                        new ProcessorDetail(i, processorStat.type(), processorStat.name(), processorIngestTime, detail)
-                                    );
                                 }
                             }
                         }
+                        // }
                     }
-                    // }
                 }
             }
             return nodeToPipelineInfoMap;

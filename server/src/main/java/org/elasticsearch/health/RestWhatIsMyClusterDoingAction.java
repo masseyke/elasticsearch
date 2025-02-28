@@ -40,11 +40,12 @@ public class RestWhatIsMyClusterDoingAction extends BaseRestHandler {
 
     @Override
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
-        boolean verbose = request.paramAsBoolean(VERBOSE_PARAM, true);
         boolean demoMode = request.paramAsBoolean("demo", false);
         String mode = request.param("mode", "standard");
+        String node = request.param("node");
         WhatIsMyClusterDoingAction.Request getHealthRequest = new WhatIsMyClusterDoingAction.Request(
             WhatIsMyClusterDoingAction.Request.Mode.valueOf(mode.toUpperCase()),
+            node,
             demoMode
         );
         return channel -> client.execute(WhatIsMyClusterDoingAction.INSTANCE, getHealthRequest, new RestToXContentListener<>(channel));
