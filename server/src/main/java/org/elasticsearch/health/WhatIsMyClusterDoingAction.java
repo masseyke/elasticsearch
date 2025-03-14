@@ -38,12 +38,11 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.transport.TransportAddress;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.common.xcontent.XContentHelper;
+import org.elasticsearch.core.CheckedConsumer;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
-import org.elasticsearch.health.stats.HealthApiStats;
 import org.elasticsearch.ingest.IngestMetadata;
-import org.elasticsearch.ingest.IngestService;
 import org.elasticsearch.ingest.IngestStats;
 import org.elasticsearch.ingest.PipelineConfiguration;
 import org.elasticsearch.injection.guice.Inject;
@@ -69,7 +68,11 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
     public static final WhatIsMyClusterDoingAction INSTANCE = new WhatIsMyClusterDoingAction();
     public static final String NAME = "cluster:monitor/what_is_my_cluster_doing";
-    private static final String diagLocation = "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131";
+    // private static final String diagLocation = "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131";
+    // private static final String diagLocation = "/Users/keithmassey/sdh/8689/api-diagnostics-20250108-163913";
+    private static final String[] diagLocations = {
+        "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131",
+        "/Users/keithmassey/sdh/8689/api-diagnostics-20250108-163913" };
 
     private WhatIsMyClusterDoingAction() {
         super(NAME);
@@ -192,8 +195,12 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 List<LocalAction.DistilledHotThread> threads = entry.getValue();
                 String nodeName = entry.getKey();
                 List<LocalAction.DistilledHotThread> filteredThreads = threads.stream().filter(thread -> thread.percent > 50).toList();
-                Map<String, Map<String, LocalAction.PipelineDetails>> filteredNodeToPipelineInfoMap = nodeToPipelineInfoMap.entrySet().stream().filter(e -> e.getValue().isEmpty() == false).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-                if (filteredThreads.isEmpty() && (filteredNodeToPipelineInfoMap.get(nodeName) == null || filteredNodeToPipelineInfoMap.get(nodeName).isEmpty())) {
+                Map<String, Map<String, LocalAction.PipelineDetails>> filteredNodeToPipelineInfoMap = nodeToPipelineInfoMap.entrySet()
+                    .stream()
+                    .filter(e -> e.getValue().isEmpty() == false)
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                if (filteredThreads.isEmpty()
+                    && (filteredNodeToPipelineInfoMap.get(nodeName) == null || filteredNodeToPipelineInfoMap.get(nodeName).isEmpty())) {
                     continue;
                 }
                 builder.startObject();
@@ -225,7 +232,10 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
                 builder.startArray("pipelines");
                 Map<String, LocalAction.PipelineDetails> nodePipelineDetails = nodeToPipelineInfoMap.get(nodeName);
-                for (LocalAction.PipelineDetails pipelineDetails : nodePipelineDetails.values().stream().sorted((o1, o2) -> Long.compare(o2.runtime, o1.runtime)).toList()) {
+                for (LocalAction.PipelineDetails pipelineDetails : nodePipelineDetails.values()
+                    .stream()
+                    .sorted((o1, o2) -> Long.compare(o2.runtime, o1.runtime))
+                    .toList()) {
                     builder.startObject();
                     builder.field("pipeline", pipelineDetails.name);
                     builder.field("total_runtime", TimeValue.timeValueMillis(pipelineDetails.runtime).toHumanReadableString(1));
@@ -246,8 +256,12 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 List<LocalAction.DistilledHotThread> threads = entry.getValue();
                 String nodeName = entry.getKey();
                 List<LocalAction.DistilledHotThread> filteredThreads = threads.stream().filter(thread -> thread.percent > 50).toList();
-                Map<String, Map<String, LocalAction.PipelineDetails>> filteredNodeToPipelineInfoMap = nodeToPipelineInfoMap.entrySet().stream().filter(e -> e.getValue().isEmpty() == false).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-                if (filteredThreads.isEmpty() && (filteredNodeToPipelineInfoMap.get(nodeName) == null || filteredNodeToPipelineInfoMap.get(nodeName).isEmpty())) {
+                Map<String, Map<String, LocalAction.PipelineDetails>> filteredNodeToPipelineInfoMap = nodeToPipelineInfoMap.entrySet()
+                    .stream()
+                    .filter(e -> e.getValue().isEmpty() == false)
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                if (filteredThreads.isEmpty()
+                    && (filteredNodeToPipelineInfoMap.get(nodeName) == null || filteredNodeToPipelineInfoMap.get(nodeName).isEmpty())) {
                     continue;
                 }
                 builder.startObject();
@@ -318,11 +332,13 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         private final Mode mode;
         private final String node;
         private final boolean demoMode;
+        private final int demoOffset;
 
-        public Request(Mode mode, @Nullable String node, boolean demoMode) {
+        public Request(Mode mode, @Nullable String node, boolean demoMode, int demoOffset) {
             this.mode = mode;
             this.node = node;
             this.demoMode = demoMode;
+            this.demoOffset = demoOffset;
         }
 
         @Override
@@ -345,23 +361,22 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
         private final ClusterService clusterService;
         private final NodeClient client;
-        private final IngestService ingestService;
-        private final Map<String, PipelineConfiguration> demoPipelines;
+        private final List<Map<String, PipelineConfiguration>> demoPipelines = new ArrayList<>(diagLocations.length);
 
         @Inject
         public LocalAction(
             ActionFilters actionFilters,
             TransportService transportService,
             ClusterService clusterService,
-            IngestService ingestService,
             NodeClient client
         ) {
             super(NAME, actionFilters, transportService.getTaskManager(), EsExecutors.DIRECT_EXECUTOR_SERVICE);
             this.clusterService = clusterService;
             this.client = client;
-            this.ingestService = ingestService;
             try {
-                demoPipelines = getPipelineConfigurationMapFromDisk();
+                for (int i = 0; i < diagLocations.length; i++) {
+                    demoPipelines.add(getPipelineConfigurationMapFromDisk(i));
+                }
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -370,19 +385,26 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         @Override
         protected void doExecute(Task task, Request request, ActionListener<Response> responseListener) {
             AtomicReference<Map<String, List<DistilledHotThread>>> nodesHotThreadsMap = new AtomicReference<>();
-            SubscribableListener.newForked(request.demoMode ? this::fetchHotThreadsFromDisk : this::fetchHotThreads)
-                .<NodesStatsResponse>andThen((l, hotThreadsResponse) -> {
-                    nodesHotThreadsMap.set(distillHotThreads(hotThreadsResponse.getNodesMap(), request.node));
-                    if (request.demoMode) {
-                        fetchNodesStatsFromDisk(l);
-                    } else {
-                        fetchNodesStats(l);
-                    }
-                })
+            final int demoOffset = request.demoOffset;
+            SubscribableListener.newForked(
+                request.demoMode
+                    ? (CheckedConsumer<ActionListener<NodesHotThreadsResponse>, Exception>) actionListener -> fetchHotThreadsFromDisk(
+                        actionListener,
+                        demoOffset
+                    )
+                    : this::fetchHotThreads
+            ).<NodesStatsResponse>andThen((l, hotThreadsResponse) -> {
+                nodesHotThreadsMap.set(distillHotThreads(hotThreadsResponse.getNodesMap(), request.node));
+                if (request.demoMode) {
+                    fetchNodesStatsFromDisk(l, demoOffset);
+                } else {
+                    fetchNodesStats(l);
+                }
+            })
                 .andThenApply(
                     nodesStatsResponse -> createResponse(
                         nodesHotThreadsMap.get(),
-                        getNodeToPipelineMap(nodesStatsResponse.getNodesMap(), request.node, request.demoMode),
+                        getNodeToPipelineMap(nodesStatsResponse.getNodesMap(), request.node, request.demoMode, demoOffset),
                         request.mode
                     )
                 )
@@ -405,8 +427,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             client.execute(TransportNodesHotThreadsAction.TYPE, nodesHotThreadsRequest, listener);
         }
 
-        private void fetchHotThreadsFromDisk(ActionListener<NodesHotThreadsResponse> listener) {
-            Path filePath = Path.of(diagLocation, "nodes_hot_threads.txt");
+        private void fetchHotThreadsFromDisk(ActionListener<NodesHotThreadsResponse> listener, int offset) {
+            Path filePath = Path.of(diagLocations[offset], "nodes_hot_threads.txt");
             List<String> lines = null;
             try {
                 lines = Files.readAllLines(filePath);
@@ -471,8 +493,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
 
         @SuppressWarnings("unchecked")
-        private void fetchNodesStatsFromDisk(ActionListener<NodesStatsResponse> listener) {
-            Path filePath = Path.of(diagLocation, "nodes_stats.json");
+        private void fetchNodesStatsFromDisk(ActionListener<NodesStatsResponse> listener, int offset) {
+            Path filePath = Path.of(diagLocations[offset], "nodes_stats.json");
             String jsonString = null;
             try {
                 jsonString = Files.readString(filePath);
@@ -594,7 +616,10 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             listener.onResponse(new NodesStatsResponse(clusterName, nodes, failedNodeExceptions));
         }
 
-        public static Map<String, List<DistilledHotThread>> distillHotThreads(Map<String, NodeHotThreads> hotThreadsMap, @Nullable String node) {
+        public static Map<String, List<DistilledHotThread>> distillHotThreads(
+            Map<String, NodeHotThreads> hotThreadsMap,
+            @Nullable String node
+        ) {
             Map<String, List<DistilledHotThread>> nodesToDistilledHotThreads = new HashMap<>();
             for (Map.Entry<String, NodeHotThreads> entry : hotThreadsMap.entrySet()) {
                 if (node == null || node.equals(entry.getKey())) {
@@ -616,8 +641,12 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
 
         @SuppressWarnings("unchecked")
-        private Map<String, Map<String, PipelineDetails>> getNodeToPipelineMap(Map<String, NodeStats> nodesMap, String node, boolean demoMode)
-            throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, IOException {
+        private Map<String, Map<String, PipelineDetails>> getNodeToPipelineMap(
+            Map<String, NodeStats> nodesMap,
+            String node,
+            boolean demoMode,
+            int demoOffset
+        ) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException, IOException {
             // maps node name to list of pipelines tuple, which is pipeline name and list of processor messages (yes, it needs a class)
             Map<String, Map<String, PipelineDetails>> nodeToPipelineInfoMap = new HashMap<>();
             for (Map.Entry<String, NodeStats> nodesMapEntry : nodesMap.entrySet()) {
@@ -643,7 +672,10 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                             if ((pipelineTime - mean) > 2 * stdDev || pipelineTime > (0.5 * totalTimeInMillis)) {
                                 List<ProcessorDetail> processorMessages = new ArrayList<>();
                                 nodeToPipelineInfoMap.get(nodeName)
-                                    .put(pipelineName, new PipelineDetails(pipelineName, pipelineTime, totalTimeInMillis, processorMessages));
+                                    .put(
+                                        pipelineName,
+                                        new PipelineDetails(pipelineName, pipelineTime, totalTimeInMillis, processorMessages)
+                                    );
                                 List<IngestStats.ProcessorStat> processors = ingestStats.processorStats().get(pipelineName);
                                 Collection<Long> nonZeroProcessorTimes = processors.stream()
                                     .map(stat -> stat.stats().ingestTimeInMillis())
@@ -652,7 +684,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                 double processorMean = calculateMean(nonZeroProcessorTimes);
                                 double processorStdDev = calculateStdDev(nonZeroProcessorTimes, mean);
                                 Map<String, PipelineConfiguration> pipelineConfigurationMap = demoMode
-                                    ? getPipelineConfigurationMapFromDisk()
+                                    ? getPipelineConfigurationMapFromDisk(demoOffset)
                                     : getPipelineConfigurationMap();
                                 PipelineConfiguration pipelineConfiguration = pipelineConfigurationMap.get(pipelineName);
                                 List<Map<String, Map<String, Object>>> processorConfigs = pipelineConfiguration == null
@@ -689,11 +721,11 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
 
         @SuppressWarnings("unchecked")
-        private Map<String, PipelineConfiguration> getPipelineConfigurationMapFromDisk() throws IOException {
-            if (demoPipelines != null) {
-                return demoPipelines;
+        private Map<String, PipelineConfiguration> getPipelineConfigurationMapFromDisk(int offset) throws IOException {
+            if (demoPipelines.size() > offset) {
+                return demoPipelines.get(offset);
             }
-            Path filePath = Path.of(diagLocation, "cluster_state.json");
+            Path filePath = Path.of(diagLocations[offset], "cluster_state.json");
             Map<String, PipelineConfiguration> pipelineConfigurationMap = new HashMap<>();
             List<Map<String, Object>> pipelinesList;
             {
@@ -761,6 +793,11 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         elasticStack.add(line);
                     }
                 }
+            }
+            if (elasticStack.isEmpty() == false) {
+                Tuple<List<String>, String> summary = getSummaryOfElasticStackForOneThread(elasticStack);
+                DistilledHotThread distilledHotThread = new DistilledHotThread(percent, summary.v1(), summary.v2());
+                threadsSummaries.add(distilledHotThread);
             }
             return threadsSummaries;
         }
