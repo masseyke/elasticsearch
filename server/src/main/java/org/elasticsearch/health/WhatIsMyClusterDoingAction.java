@@ -126,7 +126,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
 
         public XContentBuilder superSummaryToXContent(XContentBuilder builder, Params params) throws IOException {
             builder.startObject();
-            builder.startArray("activity");
+            builder.startArray("current_activity");
             Map<String, Double> classificationToPercentMap = new HashMap<>();
             for (Map.Entry<String, List<LocalAction.DistilledHotThread>> entry : nodesToDistilledHotThreads.entrySet()) {
                 List<LocalAction.DistilledHotThread> threads = entry.getValue();
@@ -158,7 +158,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             }
             builder.endArray();
 
-            builder.startArray("pipelines");
+            builder.startArray("pipelines_history");
             Map<String, Long> pipelineToRuntimeMap = new HashMap<>();
             for (Map.Entry<String, Map<String, LocalAction.PipelineDetails>> nodePipelinesEntry : nodeToPipelineInfoMap.entrySet()) {
                 Map<String, LocalAction.PipelineDetails> nodePipelineDetails = nodePipelinesEntry.getValue();
@@ -215,7 +215,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         classificationToPercentMap.put(classification, cpuPercent);
                     }
                 }
-                builder.startArray("activity");
+                builder.startArray("current_activity");
                 for (Map.Entry<String, Double> classificationEntry : classificationToPercentMap.entrySet()
                     .stream()
                     .sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
@@ -230,7 +230,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 }
                 builder.endArray();
 
-                builder.startArray("pipelines");
+                builder.startArray("pipelines_history");
                 Map<String, LocalAction.PipelineDetails> nodePipelineDetails = nodeToPipelineInfoMap.get(nodeName);
                 for (LocalAction.PipelineDetails pipelineDetails : nodePipelineDetails.values()
                     .stream()
@@ -266,7 +266,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 }
                 builder.startObject();
                 builder.field("name", nodeName);
-                builder.startArray("threads");
+                builder.startArray("current_activity");
                 for (LocalAction.DistilledHotThread thread : filteredThreads) {
                     builder.startObject();
                     builder.field("summary", thread.percent + "% " + String.join(", ", thread.activities));
@@ -274,7 +274,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                     builder.endObject();
                 }
                 builder.endArray();
-                builder.startArray("pipelines");
+                builder.startArray("pipelines_history");
                 Map<String, LocalAction.PipelineDetails> pipelinesForNode = nodeToPipelineInfoMap.get(nodeName);
                 if (pipelinesForNode != null) {
                     for (Map.Entry<String, LocalAction.PipelineDetails> pipelineEntry : pipelinesForNode.entrySet()) {
@@ -666,8 +666,10 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         }
                         double mean = calculateMean(pipelinesToTimes.values());
                         double stdDev = calculateStdDev(pipelinesToTimes.values(), mean);
+                        long allPipelineTime = 0;
                         for (Map.Entry<String, Long> entry : pipelinesToTimes.entrySet()) {
                             long pipelineTime = entry.getValue();
+                            allPipelineTime += pipelineTime;
                             String pipelineName = entry.getKey();
                             if ((pipelineTime - mean) > 2 * stdDev || pipelineTime > (0.5 * totalTimeInMillis)) {
                                 List<ProcessorDetail> processorMessages = new ArrayList<>();
@@ -694,7 +696,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                     IngestStats.ProcessorStat processorStat = processors.get(i);
                                     long processorIngestTime = processorStat.stats().ingestTimeInMillis();
                                     if ((processorIngestTime - processorMean) > 2 * processorStdDev
-                                        || processorIngestTime > 0.5 * pipelineTime) {
+                                        || processorIngestTime > 0.3 * pipelineTime) {
                                         Map<String, Object> detail;
                                         if (processorConfigs == null) {
                                             detail = null;
@@ -708,6 +710,14 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                     }
                                 }
                             }
+                        }
+                        if (allPipelineTime < 0.2 * totalTimeInMillis) {
+                            List<ProcessorDetail> processorMessages = new ArrayList<>();
+                            nodeToPipelineInfoMap.get(nodeName)
+                                .put(
+                                    "indexing",
+                                    new PipelineDetails("indexing", totalTimeInMillis - allPipelineTime, totalTimeInMillis, processorMessages)
+                                );
                         }
                         // }
                     }
@@ -812,7 +822,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         ENRICH,
         ML,
         SYSTEM_BACKGROUND_TASKS,
-        UNKONWN
+        UNKNOWN
     }
 
     private static Tuple<List<String>, String> getSummaryOfElasticStackForOneThread(List<String> elasticStack) {
@@ -837,7 +847,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 reasons.add("enriching data");
                 potentialClassifications.add(Classification.ENRICH);
             } else if (stackElement.contains("org.elasticsearch.index.engine.ElasticsearchConcurrentMergeScheduler.doMerge")
-                || stackElement.contains("SegmentMerger")) {
+                || stackElement.contains("SegmentMerger")
+            || stackElement.contains("IndexWriterMergeSource.merge")) {
                     reasons.add("maintenance -- merging segments");
                     potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                 } else if (stackElement.contains("org.elasticsearch.search.SearchService")
@@ -850,7 +861,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         || stackElement.contains("searchable_snapshots_cache_fetch_async")) {
                             reasons.add("maintenance -- prewarming the cache from searchable snapshots");
                             potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                        } else if (stackElement.contains("org.elasticsearch.repositories.blobstore.ShardSnapshotTaskRunner")) {
+                        } else if (stackElement.contains("org.elasticsearch.repositories.blobstore.ShardSnapshotTaskRunner") ||
+                stackElement.contains("org.elasticsearch.repositories.blobstore.BlobStoreRepository.snapshotFile")) {
                             reasons.add("maintenance -- snapshotting data for backup");
                             potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                         } else if (stackElement.contains("org.elasticsearch.xpack.security.audit.logfile.LoggingAuditTrail")) {
@@ -863,7 +875,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                             "org.elasticsearch.rest.RestController$EncodedLengthTrackingChunkedRestResponseBodyPart.encodeChunk"
                         )) {
                             reasons.add("reading potentially large data from request");
-                            potentialClassifications.add(Classification.UNKONWN);
+                            potentialClassifications.add(Classification.UNKNOWN);
                         } else if (stackElement.contains("org.elasticsearch.xpack.monitoring.exporter.Exporters.export")) {
                             reasons.add("exporting data for Monitoring");
                             potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
@@ -903,7 +915,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                 }
                             } else if (stackElement.contains("io.netty.handler.ssl.SslHandler.flush")) {
                                 reasons.add("returning potentially large response");
-                                potentialClassifications.add(Classification.UNKONWN);
+                                potentialClassifications.add(Classification.UNKNOWN);
                             } else if (stackElement.contains("org.elasticsearch.xpack.ml")) {
                                 reasons.add("machine learning");
                                 potentialClassifications.add(Classification.ML);
@@ -922,7 +934,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         String classification = potentialClassifications.stream()
             .sorted()
             .findFirst()
-            .orElse(Classification.UNKONWN)
+            .orElse(Classification.UNKNOWN)
             .toString()
             .toLowerCase();
         if (reasons.isEmpty()) {
