@@ -10,6 +10,7 @@
 package org.elasticsearch.reindex;
 
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.ActionListenerResponseHandler;
 import org.elasticsearch.action.ActionType;
 import org.elasticsearch.action.admin.cluster.shards.ClusterSearchShardsRequest;
 import org.elasticsearch.action.admin.cluster.shards.ClusterSearchShardsResponse;
@@ -17,21 +18,27 @@ import org.elasticsearch.action.admin.cluster.shards.TransportClusterSearchShard
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.node.DiscoveryNode;
+import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.Randomness;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.mapper.IdFieldMapper;
 import org.elasticsearch.index.reindex.AbstractBulkByScrollRequest;
 import org.elasticsearch.index.reindex.BulkByScrollResponse;
 import org.elasticsearch.index.reindex.BulkByScrollTask;
 import org.elasticsearch.index.reindex.LeaderBulkByScrollTaskState;
+import org.elasticsearch.index.reindex.ReindexAction;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.slice.SliceBuilder;
 import org.elasticsearch.tasks.TaskId;
+import org.elasticsearch.transport.TransportResponseHandler;
+import org.elasticsearch.transport.TransportService;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -40,6 +47,7 @@ import java.util.stream.Collectors;
 class BulkByScrollParallelizationHelper {
 
     static final int AUTO_SLICE_CEILING = 20;
+    private static final AtomicInteger ingestNodeGenerator = new AtomicInteger(Randomness.get().nextInt());
 
     private BulkByScrollParallelizationHelper() {}
 
@@ -62,13 +70,15 @@ class BulkByScrollParallelizationHelper {
         ActionListener<BulkByScrollResponse> listener,
         Client client,
         DiscoveryNode node,
-        Runnable workerAction
+        Runnable workerAction,
+        TransportService transportService,
+        ClusterService clusterService
     ) {
         initTaskState(
             task,
             request,
             client,
-            listener.delegateFailure((l, v) -> executeSlicedAction(task, request, action, l, client, node, workerAction))
+            listener.delegateFailure((l, v) -> executeSlicedAction(task, request, action, l, client, node, workerAction, transportService, clusterService))
         );
     }
 
@@ -89,10 +99,12 @@ class BulkByScrollParallelizationHelper {
         ActionListener<BulkByScrollResponse> listener,
         Client client,
         DiscoveryNode node,
-        Runnable workerAction
+        Runnable workerAction,
+        TransportService transportService,
+        ClusterService clusterService
     ) {
         if (task.isLeader()) {
-            sendSubRequests(client, action, node.getId(), task, request, listener);
+            sendSubRequests(client, action, node.getId(), task, request, listener, transportService, clusterService);
         } else if (task.isWorker()) {
             workerAction.run();
         } else {
@@ -158,7 +170,9 @@ class BulkByScrollParallelizationHelper {
         String localNodeId,
         BulkByScrollTask task,
         Request request,
-        ActionListener<BulkByScrollResponse> listener
+        ActionListener<BulkByScrollResponse> listener,
+        TransportService transportService,
+        ClusterService clusterService
     ) {
 
         LeaderBulkByScrollTaskState worker = task.getLeaderState();
@@ -171,6 +185,20 @@ class BulkByScrollParallelizationHelper {
                 r -> worker.onSliceResponse(listener, slice.source().slice().getId(), r),
                 e -> worker.onSliceFailure(listener, slice.source().slice().getId(), e)
             );
+
+            final DiscoveryNode[] nodes = clusterService.state().getNodes().getIngestNodes().values().toArray(DiscoveryNode[]::new);
+            DiscoveryNode randomNode = nodes[Math.floorMod(ingestNodeGenerator.incrementAndGet(), nodes.length)];
+            transportService.sendRequest(
+                randomNode,
+                action.name(),
+                requestForSlice,
+                new ActionListenerResponseHandler<>(
+                    sliceListener,
+                    BulkByScrollResponse::new,
+                    TransportResponseHandler.TRANSPORT_WORKER
+                )
+            );
+
             client.execute(action, requestForSlice, sliceListener);
         }
     }

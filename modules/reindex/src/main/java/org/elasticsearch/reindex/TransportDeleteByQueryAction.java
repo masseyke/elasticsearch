@@ -36,6 +36,7 @@ public class TransportDeleteByQueryAction extends HandledTransportAction<DeleteB
     private final ScriptService scriptService;
     private final ClusterService clusterService;
     private final DeleteByQueryMetrics deleteByQueryMetrics;
+    private final TransportService transportService;
 
     @Inject
     public TransportDeleteByQueryAction(
@@ -53,6 +54,7 @@ public class TransportDeleteByQueryAction extends HandledTransportAction<DeleteB
         this.scriptService = scriptService;
         this.clusterService = clusterService;
         this.deleteByQueryMetrics = deleteByQueryMetrics;
+        this.transportService = transportService;
     }
 
     @Override
@@ -86,7 +88,9 @@ public class TransportDeleteByQueryAction extends HandledTransportAction<DeleteB
                         }
                     })
                 ).start();
-            }
+            },
+            transportService,
+            clusterService
         );
     }
 }

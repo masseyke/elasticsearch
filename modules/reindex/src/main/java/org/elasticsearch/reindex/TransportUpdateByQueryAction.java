@@ -48,6 +48,7 @@ public class TransportUpdateByQueryAction extends HandledTransportAction<UpdateB
     private final ScriptService scriptService;
     private final ClusterService clusterService;
     private final UpdateByQueryMetrics updateByQueryMetrics;
+    private final TransportService transportService;
 
     @Inject
     public TransportUpdateByQueryAction(
@@ -65,6 +66,7 @@ public class TransportUpdateByQueryAction extends HandledTransportAction<UpdateB
         this.scriptService = scriptService;
         this.clusterService = clusterService;
         this.updateByQueryMetrics = updateByQueryMetrics;
+        this.transportService = transportService;
     }
 
     @Override
@@ -100,7 +102,9 @@ public class TransportUpdateByQueryAction extends HandledTransportAction<UpdateB
                         }
                     })
                 ).start();
-            }
+            },
+            transportService,
+            clusterService
         );
     }
 

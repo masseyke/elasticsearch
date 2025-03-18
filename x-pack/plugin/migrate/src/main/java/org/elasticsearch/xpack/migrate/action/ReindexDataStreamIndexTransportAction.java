@@ -111,7 +111,7 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
     private final ClusterService clusterService;
     private final Client client;
     private final TransportService transportService;
-    private final AtomicInteger ingestNodeGenerator = new AtomicInteger(Randomness.get().nextInt());
+//    private final AtomicInteger ingestNodeGenerator = new AtomicInteger(Randomness.get().nextInt());
 
     @Inject
     public ReindexDataStreamIndexTransportAction(
@@ -334,18 +334,19 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
                 listener.onResponse(bulkByScrollResponse);
             }
         }, listener::onFailure);
-        final DiscoveryNode[] nodes = clusterService.state().getNodes().getIngestNodes().values().toArray(DiscoveryNode[]::new);
-        DiscoveryNode randomNode = nodes[Math.floorMod(ingestNodeGenerator.incrementAndGet(), nodes.length)];
-        transportService.sendRequest(
-            randomNode,
-            ReindexAction.NAME,
-            reindexRequest,
-            new ActionListenerResponseHandler<>(
-                checkForFailuresListener,
-                BulkByScrollResponse::new,
-                TransportResponseHandler.TRANSPORT_WORKER
-            )
-        );
+//        final DiscoveryNode[] nodes = clusterService.state().getNodes().getIngestNodes().values().toArray(DiscoveryNode[]::new);
+//        DiscoveryNode randomNode = nodes[Math.floorMod(ingestNodeGenerator.incrementAndGet(), nodes.length)];
+//        transportService.sendRequest(
+//            randomNode,
+//            ReindexAction.NAME,
+//            reindexRequest,
+//            new ActionListenerResponseHandler<>(
+//                checkForFailuresListener,
+//                BulkByScrollResponse::new,
+//                TransportResponseHandler.TRANSPORT_WORKER
+//            )
+//        );
+        client.execute(ReindexAction.INSTANCE, reindexRequest, checkForFailuresListener);
     }
 
     private void updateSettings(

@@ -57,6 +57,7 @@ import org.elasticsearch.script.ReindexScript;
 import org.elasticsearch.script.Script;
 import org.elasticsearch.script.ScriptService;
 import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.transport.TransportService;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.xcontent.XContentParserConfiguration;
@@ -85,6 +86,7 @@ public class Reindexer {
     private final ThreadPool threadPool;
     private final ScriptService scriptService;
     private final ReindexSslConfig reindexSslConfig;
+    private final TransportService transportService;
     private final ReindexMetrics reindexMetrics;
 
     Reindexer(
@@ -93,6 +95,7 @@ public class Reindexer {
         ThreadPool threadPool,
         ScriptService scriptService,
         ReindexSslConfig reindexSslConfig,
+        TransportService transportService,
         @Nullable ReindexMetrics reindexMetrics
     ) {
         this.clusterService = clusterService;
@@ -101,6 +104,7 @@ public class Reindexer {
         this.scriptService = scriptService;
         this.reindexSslConfig = reindexSslConfig;
         this.reindexMetrics = reindexMetrics;
+        this.transportService = transportService;
     }
 
     public void initTask(BulkByScrollTask task, ReindexRequest request, ActionListener<Void> listener) {
@@ -138,7 +142,9 @@ public class Reindexer {
                     })
                 );
                 searchAction.start();
-            }
+            },
+            transportService,
+            clusterService
         );
     }
 
