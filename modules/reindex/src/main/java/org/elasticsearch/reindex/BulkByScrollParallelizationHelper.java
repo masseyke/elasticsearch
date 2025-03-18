@@ -198,8 +198,6 @@ class BulkByScrollParallelizationHelper {
                     TransportResponseHandler.TRANSPORT_WORKER
                 )
             );
-
-            client.execute(action, requestForSlice, sliceListener);
         }
     }
 
