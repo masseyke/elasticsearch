@@ -119,7 +119,6 @@ public class Reindexer {
             request,
             ReindexAction.INSTANCE,
             listener,
-            client,
             clusterService.localNode(),
             () -> {
                 ParentTaskAssigningClient assigningClient = new ParentTaskAssigningClient(client, clusterService.localNode(), task);

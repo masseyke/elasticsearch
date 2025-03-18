@@ -26,7 +26,6 @@ import org.elasticsearch.index.reindex.AbstractBulkByScrollRequest;
 import org.elasticsearch.index.reindex.BulkByScrollResponse;
 import org.elasticsearch.index.reindex.BulkByScrollTask;
 import org.elasticsearch.index.reindex.LeaderBulkByScrollTaskState;
-import org.elasticsearch.index.reindex.ReindexAction;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.slice.SliceBuilder;
 import org.elasticsearch.tasks.TaskId;
@@ -78,7 +77,9 @@ class BulkByScrollParallelizationHelper {
             task,
             request,
             client,
-            listener.delegateFailure((l, v) -> executeSlicedAction(task, request, action, l, client, node, workerAction, transportService, clusterService))
+            listener.delegateFailure(
+                (l, v) -> executeSlicedAction(task, request, action, l, node, workerAction, transportService, clusterService)
+            )
         );
     }
 
@@ -97,14 +98,13 @@ class BulkByScrollParallelizationHelper {
         Request request,
         ActionType<BulkByScrollResponse> action,
         ActionListener<BulkByScrollResponse> listener,
-        Client client,
         DiscoveryNode node,
         Runnable workerAction,
         TransportService transportService,
         ClusterService clusterService
     ) {
         if (task.isLeader()) {
-            sendSubRequests(client, action, node.getId(), task, request, listener, transportService, clusterService);
+            sendSubRequests(action, node.getId(), task, request, listener, transportService, clusterService);
         } else if (task.isWorker()) {
             workerAction.run();
         } else {
@@ -165,7 +165,6 @@ class BulkByScrollParallelizationHelper {
     }
 
     private static <Request extends AbstractBulkByScrollRequest<Request>> void sendSubRequests(
-        Client client,
         ActionType<BulkByScrollResponse> action,
         String localNodeId,
         BulkByScrollTask task,
@@ -185,18 +184,13 @@ class BulkByScrollParallelizationHelper {
                 r -> worker.onSliceResponse(listener, slice.source().slice().getId(), r),
                 e -> worker.onSliceFailure(listener, slice.source().slice().getId(), e)
             );
-
-            final DiscoveryNode[] nodes = clusterService.state().getNodes().getIngestNodes().values().toArray(DiscoveryNode[]::new);
-            DiscoveryNode randomNode = nodes[Math.floorMod(ingestNodeGenerator.incrementAndGet(), nodes.length)];
+            final DiscoveryNode[] ingestNodes = clusterService.state().getNodes().getIngestNodes().values().toArray(DiscoveryNode[]::new);
+            DiscoveryNode ingestNode = ingestNodes[Math.floorMod(ingestNodeGenerator.incrementAndGet(), ingestNodes.length)];
             transportService.sendRequest(
-                randomNode,
+                ingestNode,
                 action.name(),
                 requestForSlice,
-                new ActionListenerResponseHandler<>(
-                    sliceListener,
-                    BulkByScrollResponse::new,
-                    TransportResponseHandler.TRANSPORT_WORKER
-                )
+                new ActionListenerResponseHandler<>(sliceListener, BulkByScrollResponse::new, TransportResponseHandler.TRANSPORT_WORKER)
             );
         }
     }
