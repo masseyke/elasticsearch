@@ -41,9 +41,12 @@ import org.elasticsearch.cluster.block.ClusterBlockException;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.BackoffPolicy;
 import org.elasticsearch.common.Randomness;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.util.concurrent.EsExecutors;
+import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
 import org.elasticsearch.core.Assertions;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.IndexSettings;
@@ -66,9 +69,12 @@ import org.elasticsearch.xpack.core.frozen.action.FreezeIndexAction;
 import org.elasticsearch.xpack.migrate.MigrateTemplateRegistry;
 
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.elasticsearch.cluster.metadata.IndexMetadata.APIBlock.METADATA;
@@ -79,6 +85,7 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
     ReindexDataStreamIndexAction.Response> {
 
     public static final String REINDEX_MAX_REQUESTS_PER_SECOND_KEY = "migrate.data_stream_reindex_max_request_per_second";
+    private static final int MAX_REINDEXES_PER_NODE = 5;
 
     public static final Setting<Float> REINDEX_MAX_REQUESTS_PER_SECOND_SETTING = new Setting<>(
         REINDEX_MAX_REQUESTS_PER_SECOND_KEY,
@@ -112,7 +119,14 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
     private final ClusterService clusterService;
     private final Client client;
     private final TransportService transportService;
-    private final AtomicInteger ingestNodeGenerator = new AtomicInteger(Randomness.get().nextInt());
+    /*
+     * The following is incremented in order to keep track of the current round-robin position for ingest nodes that we send sliced requests
+     * to. We bound its random starting value to less than or equal to 2 ^ 30 (the default is Integer.MAX_VALUE or 2 ^ 31 - 1) only so that
+     * the unit test doesn't fail if it rolls over Integer.MAX_VALUE (since the node selected is the same for Integer.MAX_VALUE and
+     * Integer.MAX_VALUE + 1).
+     */
+    private final AtomicInteger ingestNodeOffsetGenerator = new AtomicInteger(Randomness.get().nextInt(2 ^ 30));
+    private final Map<String, Semaphore> nodeToInFlightCountMap = new ConcurrentHashMap<>();
 
     @Inject
     public ReindexDataStreamIndexTransportAction(
@@ -335,23 +349,58 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
                 listener.onResponse(bulkByScrollResponse);
             }
         }, listener::onFailure);
+        runReindexAction(reindexRequest, checkForFailuresListener, BackoffPolicy.exponentialBackoff().iterator());
+    }
+
+    private void runReindexAction(ReindexRequest reindexRequest, ActionListener<BulkByScrollResponse> listener,
+                                  Iterator<TimeValue> retryTimes) {
+        /*
+         * Reindex will potentially run a pipeline for each document. If we run all reindex requests on the same node (locally), that
+         * becomes a bottleneck. This code round-robins reindex requests to all ingest nodes to spread out the pipeline workload. When a
+         * data stream has many indices, this can improve performance a good bit.
+         */
         final DiscoveryNode[] ingestNodes = clusterService.state().getNodes().getIngestNodes().values().toArray(DiscoveryNode[]::new);
         if (ingestNodes.length == 0) {
             listener.onFailure(new NoNodeAvailableException("No ingest nodes in cluster"));
         } else {
-            DiscoveryNode ingestNode = ingestNodes[Math.floorMod(ingestNodeGenerator.incrementAndGet(), ingestNodes.length)];
-            logger.debug("Sending reindex request to {}", ingestNode.getName());
-            transportService.sendRequest(
-                ingestNode,
-                ReindexAction.NAME,
-                reindexRequest,
-                new ActionListenerResponseHandler<>(
-                    checkForFailuresListener,
-                    BulkByScrollResponse::new,
-                    TransportResponseHandler.TRANSPORT_WORKER
-                )
-            );
+            DiscoveryNode ingestNode = findAvailableNode(ingestNodes);
+            if (ingestNode == null) {
+                if (retryTimes.hasNext()) {
+                    clusterService.threadPool()
+                        .schedule(
+                            () -> runReindexAction(reindexRequest, listener, retryTimes),
+                            retryTimes.next(),
+                            EsExecutors.DIRECT_EXECUTOR_SERVICE
+                        );
+                } else {
+                    throw new EsRejectedExecutionException("No available ingest nodes");
+                }
+            } else {
+                logger.debug("Sending reindex request to {}", ingestNode.getName());
+                transportService.sendRequest(
+                    ingestNode,
+                    ReindexAction.NAME,
+                    reindexRequest,
+                    new ActionListenerResponseHandler<>(ActionListener.runAfter(listener, () -> {
+                        Semaphore semaphore = nodeToInFlightCountMap.get(ingestNode.getId());
+                        if (semaphore != null) {
+                            semaphore.release();
+                        }
+                    }), BulkByScrollResponse::new, TransportResponseHandler.TRANSPORT_WORKER)
+                );
+            }
         }
+    }
+
+    private DiscoveryNode findAvailableNode(DiscoveryNode[] discoveryNodes) {
+        for (int i = 0; i < discoveryNodes.length; i++) {
+            DiscoveryNode discoveryNode = discoveryNodes[Math.floorMod(ingestNodeOffsetGenerator.incrementAndGet(), discoveryNodes.length)];
+            Semaphore semaphore = nodeToInFlightCountMap.computeIfAbsent(discoveryNode.getId(), k -> new Semaphore(MAX_REINDEXES_PER_NODE));
+            if (semaphore.tryAcquire()) {
+                return discoveryNode;
+            }
+        }
+        return null;
     }
 
     private void updateSettings(
