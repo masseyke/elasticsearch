@@ -41,14 +41,12 @@ import org.elasticsearch.cluster.block.ClusterBlockException;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.service.ClusterService;
-import org.elasticsearch.action.bulk.BackoffPolicy;
 import org.elasticsearch.common.Randomness;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.concurrent.EsExecutors;
-import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
 import org.elasticsearch.core.Assertions;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.engine.frozen.FrozenEngine;
 import org.elasticsearch.index.reindex.BulkByScrollResponse;
@@ -68,8 +66,9 @@ import org.elasticsearch.xpack.core.deprecation.DeprecatedIndexPredicate;
 import org.elasticsearch.xpack.core.frozen.action.FreezeIndexAction;
 import org.elasticsearch.xpack.migrate.MigrateTemplateRegistry;
 
+import java.util.ArrayDeque;
 import java.util.Arrays;
-import java.util.Iterator;
+import java.util.Deque;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -127,6 +126,7 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
      */
     private final AtomicInteger ingestNodeOffsetGenerator = new AtomicInteger(Randomness.get().nextInt(2 ^ 30));
     private final Map<String, Semaphore> nodeToInFlightCountMap = new ConcurrentHashMap<>();
+    Deque<Tuple<ReindexRequest, ActionListener<BulkByScrollResponse>>> pendingReindexQueue = new ArrayDeque<>();
 
     @Inject
     public ReindexDataStreamIndexTransportAction(
@@ -349,11 +349,10 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
                 listener.onResponse(bulkByScrollResponse);
             }
         }, listener::onFailure);
-        runReindexAction(reindexRequest, checkForFailuresListener, BackoffPolicy.exponentialBackoff().iterator());
+        runReindexAction(reindexRequest, checkForFailuresListener);
     }
 
-    private void runReindexAction(ReindexRequest reindexRequest, ActionListener<BulkByScrollResponse> listener,
-                                  Iterator<TimeValue> retryTimes) {
+    private void runReindexAction(ReindexRequest reindexRequest, ActionListener<BulkByScrollResponse> listener) {
         /*
          * Reindex will potentially run a pipeline for each document. If we run all reindex requests on the same node (locally), that
          * becomes a bottleneck. This code round-robins reindex requests to all ingest nodes to spread out the pipeline workload. When a
@@ -365,31 +364,31 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
         } else {
             DiscoveryNode ingestNode = findAvailableNode(ingestNodes);
             if (ingestNode == null) {
-                if (retryTimes.hasNext()) {
-                    clusterService.threadPool()
-                        .schedule(
-                            () -> runReindexAction(reindexRequest, listener, retryTimes),
-                            retryTimes.next(),
-                            EsExecutors.DIRECT_EXECUTOR_SERVICE
-                        );
-                } else {
-                    throw new EsRejectedExecutionException("No available ingest nodes");
-                }
+                pendingReindexQueue.add(Tuple.tuple(reindexRequest, listener));
             } else {
-                logger.debug("Sending reindex request to {}", ingestNode.getName());
-                transportService.sendRequest(
-                    ingestNode,
-                    ReindexAction.NAME,
-                    reindexRequest,
-                    new ActionListenerResponseHandler<>(ActionListener.runAfter(listener, () -> {
-                        Semaphore semaphore = nodeToInFlightCountMap.get(ingestNode.getId());
-                        if (semaphore != null) {
-                            semaphore.release();
-                        }
-                    }), BulkByScrollResponse::new, TransportResponseHandler.TRANSPORT_WORKER)
-                );
+                runOnNode(reindexRequest, listener, ingestNode);
             }
         }
+    }
+
+    private void runOnNode(ReindexRequest reindexRequest, ActionListener<BulkByScrollResponse> listener, DiscoveryNode ingestNode) {
+        logger.debug("Sending reindex request to {}", ingestNode.getName());
+        transportService.sendRequest(
+            ingestNode,
+            ReindexAction.NAME,
+            reindexRequest,
+            new ActionListenerResponseHandler<>(ActionListener.runAfter(listener, () -> {
+                Tuple<ReindexRequest, ActionListener<BulkByScrollResponse>> pendingItem = pendingReindexQueue.poll();
+                if (pendingItem == null) {
+                    Semaphore semaphore = nodeToInFlightCountMap.get(ingestNode.getId());
+                    if (semaphore != null) {
+                        semaphore.release();
+                    }
+                } else {
+                    runOnNode(pendingItem.v1(), pendingItem.v2(), ingestNode);
+                }
+            }), BulkByScrollResponse::new, TransportResponseHandler.TRANSPORT_WORKER)
+        );
     }
 
     private DiscoveryNode findAvailableNode(DiscoveryNode[] discoveryNodes) {
