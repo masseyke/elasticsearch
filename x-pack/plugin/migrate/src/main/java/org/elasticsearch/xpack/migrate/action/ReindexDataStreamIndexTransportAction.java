@@ -66,13 +66,13 @@ import org.elasticsearch.xpack.core.deprecation.DeprecatedIndexPredicate;
 import org.elasticsearch.xpack.core.frozen.action.FreezeIndexAction;
 import org.elasticsearch.xpack.migrate.MigrateTemplateRegistry;
 
-import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -126,7 +126,7 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
      */
     private final AtomicInteger ingestNodeOffsetGenerator = new AtomicInteger(Randomness.get().nextInt(2 ^ 30));
     private final Map<String, Semaphore> nodeToInFlightCountMap = new ConcurrentHashMap<>();
-    Deque<Tuple<ReindexRequest, ActionListener<BulkByScrollResponse>>> pendingReindexQueue = new ArrayDeque<>();
+    Deque<Tuple<ReindexRequest, ActionListener<BulkByScrollResponse>>> pendingReindexQueue = new ConcurrentLinkedDeque<>();
 
     @Inject
     public ReindexDataStreamIndexTransportAction(
@@ -366,12 +366,12 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
             if (ingestNode == null) {
                 pendingReindexQueue.add(Tuple.tuple(reindexRequest, listener));
             } else {
-                runOnNode(reindexRequest, listener, ingestNode);
+                runReindexOnNode(reindexRequest, listener, ingestNode);
             }
         }
     }
 
-    private void runOnNode(ReindexRequest reindexRequest, ActionListener<BulkByScrollResponse> listener, DiscoveryNode ingestNode) {
+    private void runReindexOnNode(ReindexRequest reindexRequest, ActionListener<BulkByScrollResponse> listener, DiscoveryNode ingestNode) {
         logger.debug("Sending reindex request to {}", ingestNode.getName());
         transportService.sendRequest(
             ingestNode,
@@ -385,7 +385,7 @@ public class ReindexDataStreamIndexTransportAction extends HandledTransportActio
                         semaphore.release();
                     }
                 } else {
-                    runOnNode(pendingItem.v1(), pendingItem.v2(), ingestNode);
+                    runReindexOnNode(pendingItem.v1(), pendingItem.v2(), ingestNode);
                 }
             }), BulkByScrollResponse::new, TransportResponseHandler.TRANSPORT_WORKER)
         );
