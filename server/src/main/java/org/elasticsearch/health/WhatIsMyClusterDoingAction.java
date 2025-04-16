@@ -31,6 +31,7 @@ import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.node.VersionInformation;
+import org.elasticsearch.cluster.project.ProjectResolver;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.ReleasableBytesReference;
@@ -362,17 +363,20 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         private final ClusterService clusterService;
         private final NodeClient client;
         private final List<Map<String, PipelineConfiguration>> demoPipelines = new ArrayList<>(diagLocations.length);
+        private final ProjectResolver projectResolver;
 
         @Inject
         public LocalAction(
             ActionFilters actionFilters,
             TransportService transportService,
             ClusterService clusterService,
-            NodeClient client
+            NodeClient client,
+            ProjectResolver projectResolver
         ) {
             super(NAME, actionFilters, transportService.getTaskManager(), EsExecutors.DIRECT_EXECUTOR_SERVICE);
             this.clusterService = clusterService;
             this.client = client;
+            this.projectResolver = projectResolver;
             try {
                 for (int i = 0; i < diagLocations.length; i++) {
                     demoPipelines.add(getPipelineConfigurationMapFromDisk(i));
@@ -732,7 +736,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         }
 
         private Map<String, PipelineConfiguration> getPipelineConfigurationMap() {
-            return ((IngestMetadata) clusterService.state().metadata().custom("ingest")).getPipelines();
+            return ((IngestMetadata) clusterService.state().metadata().getProject(projectResolver.getProjectId()).custom("ingest"))
+                .getPipelines();
         }
 
         @SuppressWarnings("unchecked")
