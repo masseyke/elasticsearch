@@ -71,8 +71,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
     // private static final String diagLocation = "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131";
     // private static final String diagLocation = "/Users/keithmassey/sdh/8689/api-diagnostics-20250108-163913";
     private static final String[] diagLocations = {
-        "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131",
-        "/Users/keithmassey/sdh/8689/api-diagnostics-20250108-163913" };
+        "/Users/keithmassey/sdh/8924/20240414_2200/api-diagnostics-20250414-152548",
+        "/Users/keithmassey/sdh/8924/20240414_2000/api-diagnostics-20250414-130554" };
 
     private WhatIsMyClusterDoingAction() {
         super(NAME);
@@ -716,7 +716,12 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                             nodeToPipelineInfoMap.get(nodeName)
                                 .put(
                                     "indexing",
-                                    new PipelineDetails("indexing", totalTimeInMillis - allPipelineTime, totalTimeInMillis, processorMessages)
+                                    new PipelineDetails(
+                                        "indexing",
+                                        totalTimeInMillis - allPipelineTime,
+                                        totalTimeInMillis,
+                                        processorMessages
+                                    )
                                 );
                         }
                         // }
@@ -848,7 +853,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                 potentialClassifications.add(Classification.ENRICH);
             } else if (stackElement.contains("org.elasticsearch.index.engine.ElasticsearchConcurrentMergeScheduler.doMerge")
                 || stackElement.contains("SegmentMerger")
-            || stackElement.contains("IndexWriterMergeSource.merge")) {
+                || stackElement.contains("IndexWriterMergeSource.merge")) {
                     reasons.add("maintenance -- merging segments");
                     potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                 } else if (stackElement.contains("org.elasticsearch.search.SearchService")
@@ -861,68 +866,74 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         || stackElement.contains("searchable_snapshots_cache_fetch_async")) {
                             reasons.add("maintenance -- prewarming the cache from searchable snapshots");
                             potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                        } else if (stackElement.contains("org.elasticsearch.repositories.blobstore.ShardSnapshotTaskRunner") ||
-                stackElement.contains("org.elasticsearch.repositories.blobstore.BlobStoreRepository.snapshotFile")) {
-                            reasons.add("maintenance -- snapshotting data for backup");
-                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                        } else if (stackElement.contains("org.elasticsearch.xpack.security.audit.logfile.LoggingAuditTrail")) {
-                            reasons.add("writing audit logs of user activity");
-                            potentialClassifications.add(Classification.LOGGING);
-                        } else if (stackElement.contains("[flush]")) {
-                            reasons.add("maintenance -- flushing data to disk");
-                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                        } else if (stackElement.contains(
-                            "org.elasticsearch.rest.RestController$EncodedLengthTrackingChunkedRestResponseBodyPart.encodeChunk"
-                        )) {
-                            reasons.add("reading potentially large data from request");
-                            potentialClassifications.add(Classification.UNKNOWN);
-                        } else if (stackElement.contains("org.elasticsearch.xpack.monitoring.exporter.Exporters.export")) {
-                            reasons.add("exporting data for Monitoring");
-                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                        } else if (reasons.isEmpty() && stackElement.contains("[write]")) {
-                            reasons.add("writing data possibly through an ingest pipeline");
-                            potentialClassifications.add(Classification.PIPELINES);
-                        } else if (stackElement.contains(
-                            "org.elasticsearch.repositories.blobstore.BlobStoreRepository.deleteFromContainer"
-                        )) {
-                            reasons.add("deleting item from snapshot repository");
-                            potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                        } else if (stackElement.contains("org.elasticsearch.indices.recovery.PeerRecoveryTargetService")
-                            || stackElement.contains("org.elasticsearch.indices.recovery")) {
-                                reasons.add("maintenance -- peer recovery");
+                        } else if (stackElement.contains("org.elasticsearch.repositories.blobstore.ShardSnapshotTaskRunner")
+                            || stackElement.contains("org.elasticsearch.repositories.blobstore.BlobStoreRepository.snapshotFile")) {
+                                reasons.add("maintenance -- snapshotting data for backup");
                                 potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                            } else if (stackElement.contains("maybeRefresh")) {
-                                reasons.add("maintenance -- refreshing indices");
+                            } else if (stackElement.contains("org.elasticsearch.xpack.security.audit.logfile.LoggingAuditTrail")) {
+                                reasons.add("writing audit logs of user activity");
+                                potentialClassifications.add(Classification.LOGGING);
+                            } else if (stackElement.contains("[flush]")) {
+                                reasons.add("maintenance -- flushing data to disk");
                                 potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                            } else if (stackElement.contains("admin.cluster.stats")) {
-                                reasons.add("gathering cluster stats");
-                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                            } else if (stackElement.contains("org.elasticsearch.cluster.service.MasterService")) {
-                                reasons.add("maintenance -- master node");
-                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                            } else if (stackElement.contains("ShardsAllocator")) {
-                                reasons.add("maintenance -- balancing shards");
-                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
-                            } else if (stackElement.contains("Processor") && stackElement.contains("CompoundProcessor") == false) {
-                                String firstHalfOfLine = stackElement.substring(0, stackElement.indexOf("Processor"));
-                                String processorName = firstHalfOfLine.substring(firstHalfOfLine.lastIndexOf(".") + 1).toLowerCase();
-                                if (processorName.contains("enrich") == false
-                                    && processorName.contains("abstractstring") == false
-                                    && processorName.contains("continuouscomputation$") == false
-                                    && processorName.contains("asyncio") == false) {
-                                    reasons.add("running " + processorName + " processor");
-                                    potentialClassifications.add(Classification.PIPELINES);
-                                }
-                            } else if (stackElement.contains("io.netty.handler.ssl.SslHandler.flush")) {
-                                reasons.add("returning potentially large response");
+                            } else if (stackElement.contains(
+                                "org.elasticsearch.rest.RestController$EncodedLengthTrackingChunkedRestResponseBodyPart.encodeChunk"
+                            )) {
+                                reasons.add("reading potentially large data from request");
                                 potentialClassifications.add(Classification.UNKNOWN);
-                            } else if (stackElement.contains("org.elasticsearch.xpack.ml")) {
-                                reasons.add("machine learning");
-                                potentialClassifications.add(Classification.ML);
-                            } else if (stackElement.contains("RBACEngine")) {
-                                reasons.add("authentication");
-                                potentialClassifications.add(Classification.AUTH);
-                            }
+                            } else if (stackElement.contains("org.elasticsearch.xpack.monitoring.exporter.Exporters.export")) {
+                                reasons.add("exporting data for Monitoring");
+                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                            } else if (reasons.isEmpty() && stackElement.contains("[write]")) {
+                                reasons.add("writing data possibly through an ingest pipeline");
+                                potentialClassifications.add(Classification.PIPELINES);
+                            } else if (stackElement.contains(
+                                "org.elasticsearch.repositories.blobstore.BlobStoreRepository.deleteFromContainer"
+                            )) {
+                                reasons.add("deleting item from snapshot repository");
+                                potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                            } else if (stackElement.contains("org.elasticsearch.indices.recovery.PeerRecoveryTargetService")
+                                || stackElement.contains("org.elasticsearch.indices.recovery")) {
+                                    reasons.add("maintenance -- peer recovery");
+                                    potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                                } else if (stackElement.contains("maybeRefresh")) {
+                                    reasons.add("maintenance -- refreshing indices");
+                                    potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                                } else if (stackElement.contains("admin.cluster.stats")) {
+                                    reasons.add("gathering cluster stats");
+                                    potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                                } else if (stackElement.contains("org.elasticsearch.cluster.service.MasterService")) {
+                                    reasons.add("maintenance -- master node");
+                                    potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                                } else if (stackElement.contains("ShardsAllocator")) {
+                                    reasons.add("maintenance -- balancing shards");
+                                    potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                                } else if (stackElement.contains("Processor") && stackElement.contains("CompoundProcessor") == false) {
+                                    String firstHalfOfLine = stackElement.substring(0, stackElement.indexOf("Processor"));
+                                    String processorName = firstHalfOfLine.substring(firstHalfOfLine.lastIndexOf(".") + 1).toLowerCase();
+                                    if (processorName.contains("enrich") == false
+                                        && processorName.contains("abstractstring") == false
+                                        && processorName.contains("continuouscomputation$") == false
+                                        && processorName.contains("asyncio") == false) {
+                                        reasons.add("running " + processorName + " processor");
+                                        potentialClassifications.add(Classification.PIPELINES);
+                                    }
+                                } else if (stackElement.contains("io.netty.handler.ssl.SslHandler.flush")) {
+                                    reasons.add("returning potentially large response");
+                                    potentialClassifications.add(Classification.UNKNOWN);
+                                } else if (stackElement.contains("org.elasticsearch.xpack.ml")) {
+                                    reasons.add("machine learning");
+                                    potentialClassifications.add(Classification.ML);
+                                } else if (stackElement.contains("RBACEngine")) {
+                                    reasons.add("authentication");
+                                    potentialClassifications.add(Classification.AUTH);
+                                } else if (stackElement.contains("ReadinessService")) {
+                                    reasons.add("readiness service");
+                                    potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                                } else if (stackElement.contains("org.apache.lucene.search.TaskExecutor")) {
+                                    reasons.add("executing search requests");
+                                    potentialClassifications.add(Classification.SEARCH);
+                                }
             if (stackElement.contains("elastic") && stackElement.contains("%") == false) {
                 products.add("elastic");
             } else if (stackElement.contains("netty")) {
@@ -937,6 +948,11 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
             .orElse(Classification.UNKNOWN)
             .toString()
             .toLowerCase();
+        if (Classification.UNKNOWN.name().toLowerCase().equals(classification)
+            && elasticStack.isEmpty() == false
+            && elasticStack.get(0).contains("[search")) {
+            classification = Classification.SEARCH.toString().toLowerCase();
+        }
         if (reasons.isEmpty()) {
             return Tuple.tuple(List.of("unknown " + products.stream().collect(Collectors.joining(", ")) + " thread"), classification);
         } else {
