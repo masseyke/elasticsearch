@@ -834,7 +834,7 @@ public final class DataStreamTestHelper {
         );
     }
 
-    static Settings randomSettings() {
+    public static Settings randomSettings() {
         Settings.Builder builder = Settings.builder();
         if (randomBoolean()) {
             return Settings.EMPTY;
