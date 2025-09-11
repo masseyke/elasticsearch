@@ -29,6 +29,7 @@ import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.action.support.TransportAction;
 import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.cluster.ClusterName;
+import org.elasticsearch.cluster.metadata.ProjectId;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.node.VersionInformation;
 import org.elasticsearch.cluster.project.ProjectResolver;
@@ -71,9 +72,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
     public static final String NAME = "cluster:monitor/what_is_my_cluster_doing";
     // private static final String diagLocation = "/Users/keithmassey/sdh/8676/api-diagnostics-20241231-112131";
     // private static final String diagLocation = "/Users/keithmassey/sdh/8689/api-diagnostics-20250108-163913";
-    private static final String[] diagLocations = {
-        "/Users/keithmassey/sdh/8924/20240414_2200/api-diagnostics-20250414-152548",
-        "/Users/keithmassey/sdh/8924/20240414_2000/api-diagnostics-20250414-130554" };
+    private static final String[] diagLocations = { "/Users/keithmassey/sdh/9271/api-diagnostics-20250910-183143" };
+    // "/Users/keithmassey/sdh/8924/20240414_2000/api-diagnostics-20250414-130554" };
 
     private WhatIsMyClusterDoingAction() {
         super(NAME);
@@ -558,7 +558,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                         bytesProduced = producedBytes.longValue();
                     }
                     IngestStats.ByteStats byteStats = new IngestStats.ByteStats(bytesIngested, bytesProduced);
-                    IngestStats.PipelineStat pipelineStat = new IngestStats.PipelineStat(pipelineName, stats, byteStats);
+                    IngestStats.PipelineStat pipelineStat = new IngestStats.PipelineStat(ProjectId.DEFAULT, pipelineName, stats, byteStats);
                     pipelineStats.add(pipelineStat);
 
                     List<Map<String, Map<String, Object>>> processors = (List<Map<String, Map<String, Object>>>) pipelineMap.get(
@@ -590,7 +590,7 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                     }
                 }
 
-                IngestStats ingestStats = new IngestStats(totalStats, pipelineStats, processorStats);
+                IngestStats ingestStats = new IngestStats(totalStats, pipelineStats, Map.of(ProjectId.DEFAULT, processorStats));
                 NodeStats nodeStats = new NodeStats(
                     discoveryNode,
                     0,
@@ -682,7 +682,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                         pipelineName,
                                         new PipelineDetails(pipelineName, pipelineTime, totalTimeInMillis, processorMessages)
                                     );
-                                List<IngestStats.ProcessorStat> processors = ingestStats.processorStats().get(pipelineName);
+                                List<IngestStats.ProcessorStat> processors = ingestStats.processorStats()
+                                    .get(ProjectId.DEFAULT)
+                                    .get(pipelineName);
                                 Collection<Long> nonZeroProcessorTimes = processors.stream()
                                     .map(stat -> stat.stats().ingestTimeInMillis())
                                     .filter(stat -> stat > 0)
@@ -938,6 +940,9 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                 } else if (stackElement.contains("org.apache.lucene.search.TaskExecutor")) {
                                     reasons.add("executing search requests");
                                     potentialClassifications.add(Classification.SEARCH);
+                                } else {
+                                    reasons.add("unknown");
+                                    potentialClassifications.add(Classification.UNKNOWN);
                                 }
             if (stackElement.contains("elastic") && stackElement.contains("%") == false) {
                 products.add("elastic");
