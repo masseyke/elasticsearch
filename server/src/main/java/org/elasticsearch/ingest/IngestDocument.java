@@ -519,31 +519,32 @@ public final class IngestDocument {
                         }
                     }
                     case FLEXIBLE -> {
-                        Object object = map.getOrDefault(pathElement, NOT_FOUND); // getOrDefault is faster than containsKey + get
-                        if (object != NOT_FOUND) {
-                            context = object;
-                        } else if (i == (limit - 1)) {
-                            // This is our last path element, return incomplete
-                            return ResolveResult.incomplete(context, pathElement);
-                        } else {
-                            // Attempt a flexible lookup
-                            // Iterate through the remaining elements until we get a hit
-                            String combinedPath = pathElement;
-                            for (int j = i + 1; j < limit; j++) {
-                                combinedPath = combinedPath + "." + pathElements[j];
-                                object = map.getOrDefault(combinedPath, NOT_FOUND); // getOrDefault is faster than containsKey + get
-                                if (object != NOT_FOUND) {
-                                    // Found one, update the outer loop index to skip past the elements we've used
-                                    context = object;
-                                    i = j;
-                                    break;
-                                }
+                        // First, attempt a flexible lookup
+                        // Iterate through the remaining elements until we get a hit
+                        Object object = NOT_FOUND;
+                        String combinedPath = pathElement;
+                        for (int j = i + 1; j < limit; j++) {
+                            combinedPath = combinedPath + "." + pathElements[j];
+                            object = map.getOrDefault(combinedPath, NOT_FOUND); // getOrDefault is faster than containsKey + get
+                            if (object != NOT_FOUND) {
+                                // Found one, update the outer loop index to skip past the elements we've used
+                                context = object;
+                                i = j;
+                                break;
                             }
-                            if (object == NOT_FOUND) {
-                                // Not found, and out of path elements, return an incomplete result
+                        }
+                        if (object == NOT_FOUND) {
+                            object = map.getOrDefault(pathElement, NOT_FOUND); // getOrDefault is faster than containsKey + get
+                            if (pathElements.length > 1 && i == (limit - 1) /*&& combinedPath.equals(fullPath) */) {
+                                // This is our last path element, return incomplete
+                                return ResolveResult.incomplete(context, pathElement);
+                            } else if (object != NOT_FOUND) {
+                                context = object;
+                            } else {
                                 return ResolveResult.incomplete(context, combinedPath);
                             }
                         }
+
                     }
                 }
             } else if (context instanceof Map<?, ?>) {

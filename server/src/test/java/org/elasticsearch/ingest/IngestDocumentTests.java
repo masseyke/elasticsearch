@@ -518,6 +518,19 @@ public class IngestDocumentTests extends ESTestCase {
         }
     }
 
+    public void testGetFieldValueJoe() throws Exception {
+        Map<String, Object> document = new HashMap<>();
+        Map<String, Object> ingestMap = new HashMap<>();
+        ingestMap.put("timestamp", BOGUS_TIMESTAMP);
+        document.put("_ingest", ingestMap);
+        document.put("b", 456);
+        document.put("b.foo", 123);
+        IngestDocument ingestDocument = new IngestDocument("index", "id", 1, null, null, document);
+        IngestPipelineTestUtils.doWithAccessPattern(FLEXIBLE, ingestDocument, doc -> {
+            assertThat(doc.getFieldValue("b.foo", Integer.class), equalTo(123));
+        });
+    }
+
     public void testHasField() throws Exception {
         doWithRandomAccessPattern((doc) -> {
             assertTrue(doc.hasField("fizz"));
