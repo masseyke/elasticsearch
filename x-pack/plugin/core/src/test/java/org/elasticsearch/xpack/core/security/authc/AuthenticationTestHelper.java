@@ -92,6 +92,27 @@ public class AuthenticationTestHelper {
         );
     }
 
+    public static User randomCloudApiKeyUser() {
+        return randomCloudApiKeyUser(null);
+    }
+
+    public static User randomCloudApiKeyUser(String principal) {
+        final Map<String, Object> metadata = ESTestCase.randomBoolean()
+            ? null
+            : Map.ofEntries(
+                Map.entry(AuthenticationField.API_KEY_NAME_KEY, ESTestCase.randomAlphanumericOfLength(64)),
+                Map.entry(AuthenticationField.API_KEY_INTERNAL_KEY, ESTestCase.randomBoolean())
+            );
+        return new User(
+            principal == null ? ESTestCase.randomAlphanumericOfLength(64) : principal,
+            ESTestCase.randomArray(1, 3, String[]::new, () -> "role_" + ESTestCase.randomAlphaOfLengthBetween(3, 8)),
+            null,
+            null,
+            metadata,
+            true
+        );
+    }
+
     public static InternalUser randomInternalUser() {
         return ESTestCase.randomFrom(InternalUsers.get());
     }
@@ -260,28 +281,18 @@ public class AuthenticationTestHelper {
         if (apiKeyId == null) {
             apiKeyId = user != null ? user.principal() : ESTestCase.randomAlphanumericOfLength(64);
         }
-        final Map<String, Object> metadata = ESTestCase.randomBoolean()
-            ? null
-            : Map.ofEntries(
-                Map.entry(AuthenticationField.API_KEY_NAME_KEY, ESTestCase.randomAlphanumericOfLength(64)),
-                Map.entry(AuthenticationField.API_KEY_INTERNAL_KEY, ESTestCase.randomBoolean())
-            );
         if (user == null) {
-            user = new User(
-                apiKeyId,
-                ESTestCase.randomArray(1, 3, String[]::new, () -> "role_" + ESTestCase.randomAlphaOfLengthBetween(3, 8)),
-                null,
-                null,
-                metadata,
-                true
-            );
+            user = randomCloudApiKeyUser(apiKeyId);
         }
 
         assert user.principal().equals(apiKeyId) : "user principal must match cloud API key ID";
 
-        return Authentication.newCloudApiKeyAuthentication(
-            AuthenticationResult.success(user, metadata),
-            "node_" + ESTestCase.randomAlphaOfLengthBetween(3, 8)
+        return Authentication.newCloudAuthentication(
+            Authentication.AuthenticationType.API_KEY,
+            Subject.Type.CLOUD_API_KEY,
+            AuthenticationResult.success(user, user.metadata()),
+            "node_" + ESTestCase.randomAlphaOfLengthBetween(3, 8),
+            null
         );
 
     }
@@ -709,7 +720,7 @@ public class AuthenticationTestHelper {
                 if (transportVersion == null) {
                     transportVersion = TransportVersion.current();
                 }
-                if (transportVersion.before(authentication.getEffectiveSubject().getTransportVersion())) {
+                if (transportVersion.supports(authentication.getEffectiveSubject().getTransportVersion()) == false) {
                     return authentication.maybeRewriteForOlderVersion(transportVersion);
                 } else {
                     return authentication;

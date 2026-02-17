@@ -61,9 +61,9 @@ import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.IndexVersions;
 import org.elasticsearch.index.IndexingPressure;
 import org.elasticsearch.index.VersionType;
-import org.elasticsearch.indices.EmptySystemIndices;
 import org.elasticsearch.indices.SystemIndexDescriptorUtils;
 import org.elasticsearch.indices.SystemIndices;
+import org.elasticsearch.ingest.SamplingService;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.test.VersionUtils;
 import org.elasticsearch.test.index.IndexVersionUtils;
@@ -82,6 +82,7 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -93,6 +94,8 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class TransportBulkActionTests extends ESTestCase {
@@ -126,7 +129,15 @@ public class TransportBulkActionTests extends ESTestCase {
                 new ActionFilters(Collections.emptySet()),
                 new Resolver(),
                 new IndexingPressure(Settings.EMPTY),
-                EmptySystemIndices.INSTANCE,
+                new SystemIndices(
+                    List.of(
+                        new SystemIndices.Feature(
+                            "plugin",
+                            "test feature",
+                            List.of(SystemIndexDescriptorUtils.createUnmanaged(".transport_bulk_tests_system*", ""))
+                        )
+                    )
+                ),
                 new ProjectResolver() {
                     @Override
                     public <E extends Exception> void executeOnProject(ProjectId projectId, CheckedRunnable<E> body) throws E {
@@ -145,8 +156,15 @@ public class TransportBulkActionTests extends ESTestCase {
                     public boolean clusterHasFeature(ClusterState state, NodeFeature feature) {
                         return DataStream.DATA_STREAM_FAILURE_STORE_FEATURE.equals(feature);
                     }
-                }
+                },
+                initializeSamplingService()
             );
+        }
+
+        private static SamplingService initializeSamplingService() {
+            SamplingService samplingService = mock(SamplingService.class);
+            when(samplingService.atLeastOneSampleConfigured(any())).thenReturn(true);
+            return samplingService;
         }
 
         @Override
@@ -184,9 +202,9 @@ public class TransportBulkActionTests extends ESTestCase {
         threadPool = new TestThreadPool(getClass().getName());
         DiscoveryNode discoveryNode = DiscoveryNodeUtils.builder("node")
             .version(
-                VersionUtils.randomCompatibleVersion(random(), Version.CURRENT),
+                VersionUtils.randomCompatibleVersion(Version.CURRENT),
                 IndexVersions.MINIMUM_COMPATIBLE,
-                IndexVersionUtils.randomCompatibleVersion(random())
+                IndexVersionUtils.randomCompatibleVersion()
             )
             .build();
         clusterService = createClusterService(threadPool, discoveryNode);
@@ -386,7 +404,7 @@ public class TransportBulkActionTests extends ESTestCase {
         });
     }
 
-    public void testDispatchesToWriteCoordinationThreadPoolOnce() throws Exception {
+    public void testDispatchesToWriteCoordinationThreadPool() throws Exception {
         BulkRequest bulkRequest = new BulkRequest().add(new IndexRequest("index").id("id").source(Collections.emptyMap()));
         PlainActionFuture<BulkResponse> future = new PlainActionFuture<>();
         ThreadPoolStats.Stats stats = threadPool.stats()
@@ -401,13 +419,43 @@ public class TransportBulkActionTests extends ESTestCase {
 
         assertBusy(() -> {
             // Will increment twice because it will dispatch on the first coordination attempt. And then dispatch a second time after the
-            // index
-            // is created.
+            // index is created.
             assertThat(
                 threadPool.stats()
                     .stats()
                     .stream()
                     .filter(s -> s.name().equals(ThreadPool.Names.WRITE_COORDINATION))
+                    .findAny()
+                    .get()
+                    .completed(),
+                equalTo(2L)
+            );
+        });
+    }
+
+    public void testSystemWriteDispatchesToSystemWriteCoordinationThreadPool() throws Exception {
+        BulkRequest bulkRequest = new BulkRequest().add(
+            new IndexRequest(".transport_bulk_tests_system_1").id("id").source(Collections.emptyMap())
+        );
+        PlainActionFuture<BulkResponse> future = new PlainActionFuture<>();
+        ThreadPoolStats.Stats stats = threadPool.stats()
+            .stats()
+            .stream()
+            .filter(s -> s.name().equals(ThreadPool.Names.SYSTEM_WRITE_COORDINATION))
+            .findAny()
+            .get();
+        assertThat(stats.completed(), equalTo(0L));
+        ActionTestUtils.execute(bulkAction, null, bulkRequest, future);
+        future.actionGet();
+
+        assertBusy(() -> {
+            // Will increment twice because it will dispatch on the first coordination attempt. And then dispatch a second time after the
+            // index is created.
+            assertThat(
+                threadPool.stats()
+                    .stats()
+                    .stream()
+                    .filter(s -> s.name().equals(ThreadPool.Names.SYSTEM_WRITE_COORDINATION))
                     .findAny()
                     .get()
                     .completed(),
@@ -694,6 +742,19 @@ public class TransportBulkActionTests extends ESTestCase {
         assertTrue(failureStoreFailure.isFailed());
         assertEquals("failure-store-rollover-exception", failureStoreFailure.getFailure().getCause().getMessage());
         assertNull(bulkRequest.requests.get(2));
+    }
+
+    public void testSampling() throws ExecutionException, InterruptedException {
+        // This test makes sure that the sampling service is called once per IndexRequest
+        BulkRequest bulkRequest = new BulkRequest().add(new IndexRequest("index").id("id1").source(Collections.emptyMap()))
+            .add(new IndexRequest("index").id("id2").source(Collections.emptyMap()))
+            .add(new DeleteRequest("index2").id("id3"));
+        PlainActionFuture<BulkResponse> future = new PlainActionFuture<>();
+        ActionTestUtils.execute(bulkAction, null, bulkRequest, future);
+        future.get();
+        assertTrue(bulkAction.indexCreated);
+        // We expect 2 sampling calls since there are 2 index requests:
+        verify(bulkAction.samplingService, times(2)).maybeSample(any(), any());
     }
 
     private BulkRequest buildBulkRequest(List<String> indices) {

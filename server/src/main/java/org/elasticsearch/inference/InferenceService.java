@@ -11,7 +11,6 @@ package org.elasticsearch.inference;
 
 import org.elasticsearch.TransportVersion;
 import org.elasticsearch.action.ActionListener;
-import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.inference.validation.ServiceIntegrationValidator;
@@ -23,8 +22,6 @@ import java.util.Map;
 import java.util.Set;
 
 public interface InferenceService extends Closeable {
-
-    default void init(Client client) {}
 
     String name();
 
@@ -53,6 +50,15 @@ public interface InferenceService extends Closeable {
      */
     void parseRequestConfig(String modelId, TaskType taskType, Map<String, Object> config, ActionListener<Model> parsedModelListener);
 
+    default Model parsePersistedConfigWithSecrets(UnparsedModel unparsedModel) {
+        return parsePersistedConfigWithSecrets(
+            unparsedModel.inferenceEntityId(),
+            unparsedModel.taskType(),
+            unparsedModel.settings(),
+            unparsedModel.secrets()
+        );
+    }
+
     /**
      * Parse model configuration from {@code config map} from persisted storage and return the parsed {@link Model}. This requires that
      * secrets and service settings be in two separate maps.
@@ -69,6 +75,15 @@ public interface InferenceService extends Closeable {
     Model parsePersistedConfigWithSecrets(String modelId, TaskType taskType, Map<String, Object> config, Map<String, Object> secrets);
 
     /**
+     * Create a new model from {@link ModelConfigurations} and {@link ModelSecrets} objects.
+     * This method is used for creating updated model instances.
+     * @param config The model configurations
+     * @param secrets The model secrets
+     * @return The created model
+     */
+    Model buildModelFromConfigAndSecrets(ModelConfigurations config, ModelSecrets secrets);
+
+    /**
      * Parse model configuration from {@code config map} from persisted storage and return the parsed {@link Model}.
      * This function modifies {@code config map}, fields are removed from the map as they are read.
      *
@@ -80,6 +95,10 @@ public interface InferenceService extends Closeable {
      * @return The parsed {@link Model}
      */
     Model parsePersistedConfig(String modelId, TaskType taskType, Map<String, Object> config);
+
+    default Model parsePersistedConfig(UnparsedModel unparsedModel) {
+        return parsePersistedConfig(unparsedModel.inferenceEntityId(), unparsedModel.taskType(), unparsedModel.settings());
+    }
 
     InferenceServiceConfiguration getConfiguration();
 
@@ -108,7 +127,9 @@ public interface InferenceService extends Closeable {
      * @param stream          Stream inference results
      * @param taskSettings    Settings in the request to override the model's defaults
      * @param inputType       For search, ingest etc
-     * @param timeout         The timeout for the request
+     * @param timeout         The timeout for the request. Callers should normally pass in a timeout.
+     *                        Passing in null is specifically for query-time inference, when the timeout is managed by the
+     *                        xpack.inference.query_timeout cluster setting.
      * @param listener        Inference result listener
      */
     void infer(
@@ -120,7 +141,7 @@ public interface InferenceService extends Closeable {
         boolean stream,
         Map<String, Object> taskSettings,
         InputType inputType,
-        TimeValue timeout,
+        @Nullable TimeValue timeout,
         ActionListener<InferenceServiceResults> listener
     );
 
@@ -138,6 +159,16 @@ public interface InferenceService extends Closeable {
         TimeValue timeout,
         ActionListener<InferenceServiceResults> listener
     );
+
+    /**
+     * Perform multimodal embedding inference on the model using the embedding schema.
+     *
+     * @param model The model
+     * @param request Parameters for the request
+     * @param timeout The timeout for the request
+     * @param listener Inference result listener
+     */
+    void embeddingInfer(Model model, EmbeddingRequest request, TimeValue timeout, ActionListener<InferenceServiceResults> listener);
 
     /**
      * Chunk long text.

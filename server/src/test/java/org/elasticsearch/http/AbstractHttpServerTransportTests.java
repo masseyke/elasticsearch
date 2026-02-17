@@ -32,6 +32,7 @@ import org.elasticsearch.common.transport.TransportAddress;
 import org.elasticsearch.common.util.MockPageCacheRecycler;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.env.TestEnvironment;
 import org.elasticsearch.indices.TestIndexNameExpressionResolver;
 import org.elasticsearch.plugins.ActionPlugin;
 import org.elasticsearch.plugins.internal.RestExtension;
@@ -44,7 +45,6 @@ import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.telemetry.TelemetryProvider;
 import org.elasticsearch.telemetry.metric.MeterRegistry;
-import org.elasticsearch.telemetry.tracing.Tracer;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.test.MockLog;
 import org.elasticsearch.test.junit.annotations.TestLogging;
@@ -202,7 +202,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 xContentRegistry(),
                 dispatcher,
                 new ClusterSettings(Settings.EMPTY, ClusterSettings.BUILT_IN_CLUSTER_SETTINGS),
-                Tracer.NOOP
+                TelemetryProvider.NOOP
             ) {
 
                 @Override
@@ -211,14 +211,10 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 }
 
                 @Override
-                protected void doStart() {
-
-                }
+                protected void startInternal() {}
 
                 @Override
-                protected void stopInternal() {
-
-                }
+                protected void stopInternal() {}
 
                 @Override
                 public HttpStats stats() {
@@ -286,7 +282,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 xContentRegistry(),
                 dispatcher,
                 new ClusterSettings(Settings.EMPTY, ClusterSettings.BUILT_IN_CLUSTER_SETTINGS),
-                Tracer.NOOP
+                TelemetryProvider.NOOP
             ) {
 
                 @Override
@@ -295,14 +291,10 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 }
 
                 @Override
-                protected void doStart() {
-
-                }
+                protected void startInternal() {}
 
                 @Override
-                protected void stopInternal() {
-
-                }
+                protected void stopInternal() {}
 
                 @Override
                 public HttpStats stats() {
@@ -341,7 +333,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
             public void dispatchRequest(final RestRequest request, final RestChannel channel, final ThreadContext threadContext) {
                 assertThat(threadContext.getHeader(Task.TRACE_ID), equalTo("0af7651916cd43dd8448eb211c80319c"));
                 assertThat(threadContext.getHeader(Task.TRACE_PARENT_HTTP_HEADER), nullValue());
-                assertThat(threadContext.getTransient("parent_" + Task.TRACE_PARENT_HTTP_HEADER), equalTo(traceParentValue));
+                assertThat(threadContext.getTransient(Task.PARENT_TRACE_PARENT_HEADER), equalTo(traceParentValue));
                 // request trace start time is also set
                 assertTrue(traceStartTimeRef.compareAndSet(null, threadContext.getTransient(Task.TRACE_START_TIME)));
                 assertNotNull(traceStartTimeRef.get());
@@ -352,7 +344,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 // but they're not copied in for bad requests
                 assertThat(threadContext.getHeader(Task.TRACE_ID), nullValue());
                 assertThat(threadContext.getHeader(Task.TRACE_PARENT_HTTP_HEADER), nullValue());
-                assertThat(threadContext.getTransient("parent_" + Task.TRACE_PARENT_HTTP_HEADER), nullValue());
+                assertThat(threadContext.getTransient(Task.PARENT_TRACE_PARENT_HEADER), nullValue());
                 assertThat(threadContext.getTransient(Task.TRACE_START_TIME), nullValue());
             }
 
@@ -376,7 +368,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 xContentRegistry(),
                 dispatcher,
                 new ClusterSettings(Settings.EMPTY, ClusterSettings.BUILT_IN_CLUSTER_SETTINGS),
-                Tracer.NOOP
+                TelemetryProvider.NOOP
             ) {
 
                 @Override
@@ -385,7 +377,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 }
 
                 @Override
-                protected void doStart() {}
+                protected void startInternal() {}
 
                 @Override
                 protected void stopInternal() {}
@@ -407,7 +399,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
             // headers are "null" here, aka not present, because the thread context changes containing them is to be confined to the request
             assertThat(threadPool.getThreadContext().getHeader(Task.TRACE_ID), nullValue());
             assertThat(threadPool.getThreadContext().getHeader(Task.TRACE_PARENT_HTTP_HEADER), nullValue());
-            assertThat(threadPool.getThreadContext().getTransient("parent_" + Task.TRACE_PARENT_HTTP_HEADER), nullValue());
+            assertThat(threadPool.getThreadContext().getTransient(Task.PARENT_TRACE_PARENT_HEADER), nullValue());
 
             // system clock is not _technically_ monotonic but in practice it's very unlikely to see a discontinuity here
             assertThat(
@@ -419,7 +411,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
             // headers are "null" here, aka not present, because the thread context changes containing them is to be confined to the request
             assertThat(threadPool.getThreadContext().getHeader(Task.TRACE_ID), nullValue());
             assertThat(threadPool.getThreadContext().getHeader(Task.TRACE_PARENT_HTTP_HEADER), nullValue());
-            assertThat(threadPool.getThreadContext().getTransient("parent_" + Task.TRACE_PARENT_HTTP_HEADER), nullValue());
+            assertThat(threadPool.getThreadContext().getTransient(Task.PARENT_TRACE_PARENT_HEADER), nullValue());
         }
     }
 
@@ -508,7 +500,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 }
             },
             clusterSettings,
-            Tracer.NOOP
+            TelemetryProvider.NOOP
         ) {
             @Override
             protected HttpServerChannel bind(InetSocketAddress hostAddress) {
@@ -516,7 +508,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
             }
 
             @Override
-            protected void doStart() {}
+            protected void startInternal() {}
 
             @Override
             protected void stopInternal() {}
@@ -559,7 +551,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                     }
                 },
                 clusterSettings,
-                Tracer.NOOP
+                TelemetryProvider.NOOP
             ) {
                 @Override
                 protected HttpServerChannel bind(InetSocketAddress hostAddress) {
@@ -567,9 +559,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 }
 
                 @Override
-                protected void doStart() {
-
-                }
+                protected void startInternal() {}
 
                 @Override
                 protected void stopInternal() {
@@ -702,7 +692,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                     }
                 },
                 clusterSettings,
-                Tracer.NOOP
+                TelemetryProvider.NOOP
             ) {
                 @Override
                 protected HttpServerChannel bind(InetSocketAddress hostAddress) {
@@ -710,14 +700,10 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 }
 
                 @Override
-                protected void doStart() {
-
-                }
+                protected void startInternal() {}
 
                 @Override
-                protected void stopInternal() {
-
-                }
+                protected void stopInternal() {}
 
                 @Override
                 public HttpStats stats() {
@@ -765,7 +751,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                     }
                 },
                 new ClusterSettings(Settings.EMPTY, ClusterSettings.BUILT_IN_CLUSTER_SETTINGS),
-                Tracer.NOOP
+                TelemetryProvider.NOOP
             ) {
 
                 @Override
@@ -774,7 +760,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 }
 
                 @Override
-                protected void doStart() {}
+                protected void startInternal() {}
 
                 @Override
                 protected void stopInternal() {}
@@ -847,7 +833,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                     }
                 },
                 clusterSettings,
-                Tracer.NOOP
+                TelemetryProvider.NOOP
             ) {
 
                 @Override
@@ -856,7 +842,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 }
 
                 @Override
-                protected void doStart() {}
+                protected void startInternal() {}
 
                 @Override
                 protected void stopInternal() {}
@@ -1157,7 +1143,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
     }
 
     private ActionModule getFakeActionModule(Set<RestHeaderDefinition> headersToCopy) {
-        SettingsModule settings = new SettingsModule(Settings.EMPTY);
+        SettingsModule settings = new SettingsModule(Settings.builder().put("path.home", createTempDir()).build());
         ActionPlugin copyHeadersPlugin = new ActionPlugin() {
             @Override
             public Collection<RestHeaderDefinition> getRestHeaders() {
@@ -1165,7 +1151,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
             }
         };
         return new ActionModule(
-            settings.getSettings(),
+            TestEnvironment.newEnvironment(settings.getSettings()),
             TestIndexNameExpressionResolver.newInstance(threadPool.getThreadContext()),
             null,
             settings.getIndexScopedSettings(),
@@ -1200,7 +1186,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
                 xContentRegistry(),
                 dispatcher,
                 new ClusterSettings(Settings.EMPTY, ClusterSettings.BUILT_IN_CLUSTER_SETTINGS),
-                Tracer.NOOP
+                TelemetryProvider.NOOP
             );
             bindServer();
         }
@@ -1226,7 +1212,7 @@ public class AbstractHttpServerTransportTests extends ESTestCase {
         }
 
         @Override
-        protected void doStart() {
+        protected void startInternal() {
             bindServer();
         }
 

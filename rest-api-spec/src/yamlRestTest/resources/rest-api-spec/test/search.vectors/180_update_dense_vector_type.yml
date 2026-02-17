@@ -2123,16 +2123,10 @@ setup:
       capabilities:
         - method: POST
           path: /_search
-          capabilities: [ optimized_scalar_quantization_bbq ]
+          capabilities: [ optimized_scalar_quantization_bbq, dense_vector_updatable_bbq ]
       test_runner_features: capabilities
       reason: "BBQ is required to test upgrading to bbq_flat and bbq_hnsw"
-  - requires:
-      reason: 'dense_vector updatable to bbq capability required'
-      test_runner_features: [ capabilities ]
-      capabilities:
-        - method: PUT
-          path : /_mapping
-          capabilities: [ dense_vector_updatable_bbq ]
+
   - do:
       indices.create:
         index: vectors_64
@@ -2269,16 +2263,10 @@ setup:
       capabilities:
         - method: POST
           path: /_search
-          capabilities: [ optimized_scalar_quantization_bbq ]
+          capabilities: [ optimized_scalar_quantization_bbq, dense_vector_updatable_bbq ]
       test_runner_features: capabilities
       reason: "BBQ is required to test upgrading to bbq_flat and bbq_hnsw"
-  - requires:
-      reason: 'dense_vector updatable to bbq capability required'
-      test_runner_features: [ capabilities ]
-      capabilities:
-        - method: PUT
-          path : /_mapping
-          capabilities: [ dense_vector_updatable_bbq ]
+
   - do:
       indices.create:
         index: vectors_64
@@ -2390,16 +2378,10 @@ setup:
       capabilities:
         - method: POST
           path: /_search
-          capabilities: [ optimized_scalar_quantization_bbq ]
+          capabilities: [ optimized_scalar_quantization_bbq, dense_vector_updatable_bbq ]
       test_runner_features: capabilities
       reason: "BBQ is required to test upgrading to bbq_flat and bbq_hnsw"
-  - requires:
-      reason: 'dense_vector updatable to bbq capability required'
-      test_runner_features: [ capabilities ]
-      capabilities:
-        - method: PUT
-          path : /_mapping
-          capabilities: [ dense_vector_updatable_bbq ]
+
   - do:
       indices.create:
         index: vectors_64

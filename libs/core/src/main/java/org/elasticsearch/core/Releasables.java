@@ -155,6 +155,9 @@ public enum Releasables {
 
     /**
      * Wraps a {@link Releasable} such that its {@link Releasable#close()} method can be called multiple times without double-releasing.
+     * <p>
+     * Crucially, this drops the reference to the provided resource as soon as it is complete, allowing it and its dependencies to be GCd
+     * even though the small {@code releaseOnce()} wrapper might remain reachable in a collection of pending-release resources somewhere.
      */
     public static Releasable releaseOnce(final Releasable releasable) {
         return new ReleaseOnce(releasable);
@@ -200,6 +203,11 @@ public enum Releasables {
         } else {
             return delegate;
         }
+    }
+
+    /** Creates a {@link Releasable} that calls {@link RefCounted#decRef()} when closed. */
+    public static Releasable fromRefCounted(RefCounted refCounted) {
+        return () -> refCounted.decRef();
     }
 
     private static class ReleaseOnce extends AtomicReference<Releasable> implements Releasable {

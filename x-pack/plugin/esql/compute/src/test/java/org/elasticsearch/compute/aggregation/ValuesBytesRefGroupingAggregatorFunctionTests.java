@@ -12,8 +12,8 @@ import org.elasticsearch.compute.data.Block;
 import org.elasticsearch.compute.data.BlockFactory;
 import org.elasticsearch.compute.data.BlockUtils;
 import org.elasticsearch.compute.data.Page;
-import org.elasticsearch.compute.operator.LongBytesRefTupleBlockSourceOperator;
 import org.elasticsearch.compute.operator.SourceOperator;
+import org.elasticsearch.compute.test.operator.blocksource.LongBytesRefTupleBlockSourceOperator;
 import org.elasticsearch.core.Tuple;
 
 import java.util.Arrays;
@@ -27,6 +27,9 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 
 public class ValuesBytesRefGroupingAggregatorFunctionTests extends GroupingAggregatorFunctionTestCase {
+    final boolean ordinals = randomBoolean();
+    final boolean withNulls = randomBoolean();
+
     @Override
     protected AggregatorFunctionSupplier aggregatorFunction() {
         return new ValuesBytesRefAggregatorFunctionSupplier();
@@ -39,10 +42,17 @@ public class ValuesBytesRefGroupingAggregatorFunctionTests extends GroupingAggre
 
     @Override
     protected SourceOperator simpleInput(BlockFactory blockFactory, int size) {
-        return new LongBytesRefTupleBlockSourceOperator(
-            blockFactory,
-            IntStream.range(0, size).mapToObj(l -> Tuple.tuple(randomLongBetween(0, 4), new BytesRef(randomAlphaOfLengthBetween(0, 100))))
-        );
+
+        return new LongBytesRefTupleBlockSourceOperator(blockFactory, IntStream.range(0, size).mapToObj(l -> {
+            long groupId = randomLongBetween(0, 100);
+            if (withNulls && randomBoolean()) {
+                return Tuple.tuple(groupId, null);
+            }
+            if (ordinals && randomBoolean()) {
+                return Tuple.tuple(groupId, new BytesRef("v" + between(1, 5)));
+            }
+            return Tuple.tuple(groupId, new BytesRef(randomAlphaOfLengthBetween(0, 100)));
+        }));
     }
 
     @Override

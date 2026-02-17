@@ -21,6 +21,7 @@ import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.block.ClusterBlockException;
 import org.elasticsearch.cluster.block.ClusterBlockLevel;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
+import org.elasticsearch.cluster.metadata.ProjectId;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.project.ProjectResolver;
 import org.elasticsearch.cluster.service.ClusterService;
@@ -314,7 +315,7 @@ public class TransportStartDatafeedAction extends TransportMasterNodeAction<Star
         final TransportVersion minVersion = minVersionAndReason.get().v1();
 
         List<String> clustersTooOld = remoteClusters.stream()
-            .filter(cn -> transportVersionSupplier.apply(cn).before(minVersion))
+            .filter(cn -> transportVersionSupplier.apply(cn).supports(minVersion) == false)
             .collect(Collectors.toList());
         if (clustersTooOld.isEmpty()) {
             return;
@@ -494,10 +495,11 @@ public class TransportStartDatafeedAction extends TransportMasterNodeAction<Star
         }
 
         @Override
-        public PersistentTasksCustomMetadata.Assignment getAssignment(
+        protected PersistentTasksCustomMetadata.Assignment doGetAssignment(
             StartDatafeedAction.DatafeedParams params,
             Collection<DiscoveryNode> candidateNodes,
-            ClusterState clusterState
+            ClusterState clusterState,
+            @Nullable ProjectId projectId
         ) {
             return new DatafeedNodeSelector(
                 clusterState,
@@ -510,7 +512,7 @@ public class TransportStartDatafeedAction extends TransportMasterNodeAction<Star
         }
 
         @Override
-        public void validate(StartDatafeedAction.DatafeedParams params, ClusterState clusterState) {
+        public void validate(StartDatafeedAction.DatafeedParams params, ClusterState clusterState, @Nullable ProjectId projectId) {
             new DatafeedNodeSelector(
                 clusterState,
                 resolver,

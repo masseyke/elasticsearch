@@ -75,9 +75,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.elasticsearch.index.engine.EngineTestCase.getDocIds;
+import static org.elasticsearch.index.EngineTestUtils.getDocIds;
 import static org.elasticsearch.index.engine.EngineTestCase.getNumVersionLookups;
 import static org.elasticsearch.index.engine.EngineTestCase.getTranslog;
 import static org.hamcrest.Matchers.containsString;
@@ -261,7 +262,7 @@ public class FollowingEngineTests extends ESTestCase {
             newMergePolicy(),
             indexWriterConfig.getAnalyzer(),
             indexWriterConfig.getSimilarity(),
-            new CodecService(null, BigArrays.NON_RECYCLING_INSTANCE),
+            new CodecService(null, BigArrays.NON_RECYCLING_INSTANCE, null),
             new Engine.EventListener() {
                 @Override
                 public void onFailedEngine(String reason, Exception e) {
@@ -286,7 +287,8 @@ public class FollowingEngineTests extends ESTestCase {
             true,
             mapperService,
             new EngineResetLock(),
-            MergeMetrics.NOOP
+            MergeMetrics.NOOP,
+            Function.identity()
         );
     }
 

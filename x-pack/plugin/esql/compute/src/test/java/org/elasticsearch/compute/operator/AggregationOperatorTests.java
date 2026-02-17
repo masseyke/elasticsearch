@@ -17,7 +17,7 @@ import org.elasticsearch.compute.aggregation.SumLongAggregatorFunctionTests;
 import org.elasticsearch.compute.data.Block;
 import org.elasticsearch.compute.data.BlockFactory;
 import org.elasticsearch.compute.data.Page;
-import org.elasticsearch.compute.test.SequenceLongBlockSourceOperator;
+import org.elasticsearch.compute.test.operator.blocksource.SequenceLongBlockSourceOperator;
 import org.hamcrest.Matcher;
 
 import java.util.List;
@@ -80,7 +80,7 @@ public class AggregationOperatorTests extends ForkingOperatorTestCase {
 
         Block sums = results.get(0).getBlock(0);
         Block maxs = results.get(0).getBlock(1);
-        sum.assertSimpleOutput(input.stream().map(p -> p.<Block>getBlock(0)).toList(), sums);
-        max.assertSimpleOutput(input.stream().map(p -> p.<Block>getBlock(0)).toList(), maxs);
+        sum.assertSimpleOutput(input, sums);
+        max.assertSimpleOutput(input, maxs);
     }
 }
