@@ -833,6 +833,8 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
         SEARCH,
         ENRICH,
         ML,
+        WATCHER,
+        SEARCHABLE_SNAPSHOTS,
         SYSTEM_BACKGROUND_TASKS,
         UNKNOWN
     }
@@ -928,6 +930,27 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                 } else if (stackElement.contains("io.netty.handler.ssl.SslHandler.flush")) {
                                     reasons.add("returning potentially large response");
                                     potentialClassifications.add(Classification.UNKNOWN);
+                                } else if (stackElement.contains("org.elasticsearch.compute.operator")
+                                    || stackElement.contains("org.elasticsearch.compute.lucene")) {
+                                    reasons.add("executing ES|QL query");
+                                    potentialClassifications.add(Classification.SEARCH);
+                                } else if (stackElement.contains("org.elasticsearch.blobcache")
+                                    || stackElement.contains("co.elastic.elasticsearch.stateless")
+                                    || stackElement.contains("S3RetryingInputStream")
+                                    || stackElement.contains("S3BlobContainer")
+                                    || stackElement.contains("searchable_snapshot")) {
+                                    reasons.add("reading from searchable snapshot / blob cache");
+                                    potentialClassifications.add(Classification.SEARCHABLE_SNAPSHOTS);
+                                } else if (stackElement.contains("org.elasticsearch.xpack.inference")) {
+                                    reasons.add("inference");
+                                    potentialClassifications.add(Classification.ML);
+                                } else if (stackElement.contains("org.elasticsearch.xpack.transform")) {
+                                    reasons.add("transforms");
+                                    potentialClassifications.add(Classification.ML);
+                                } else if (stackElement.contains("org.elasticsearch.xpack.watcher")
+                                    || stackElement.contains("TickerScheduleTriggerEngine")) {
+                                    reasons.add("watcher");
+                                    potentialClassifications.add(Classification.WATCHER);
                                 } else if (stackElement.contains("org.elasticsearch.xpack.ml")) {
                                     reasons.add("machine learning");
                                     potentialClassifications.add(Classification.ML);
@@ -936,6 +959,12 @@ public class WhatIsMyClusterDoingAction extends ActionType<WhatIsMyClusterDoingA
                                     potentialClassifications.add(Classification.AUTH);
                                 } else if (stackElement.contains("ReadinessService")) {
                                     reasons.add("readiness service");
+                                    potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
+                                } else if (stackElement.contains("GlobalCheckpointSyncAction")
+                                    || stackElement.contains("Translog.sync")
+                                    || stackElement.contains("Translog.ensureSynced")
+                                    || stackElement.contains("syncGlobalCheckpoint")) {
+                                    reasons.add("maintenance -- syncing translog for durability");
                                     potentialClassifications.add(Classification.SYSTEM_BACKGROUND_TASKS);
                                 } else if (stackElement.contains("org.apache.lucene.search.TaskExecutor")) {
                                     reasons.add("executing search requests");

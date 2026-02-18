@@ -36,7 +36,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@ESTestCase.WithoutSecurityManager
+@SuppressWarnings("unused")
 public class WhatsGoingOnTests extends ESTestCase {
     public void testFromDiagBundle() throws IOException {
         // List<String> diagLocations = List.of("/Users/keithmassey/sdh/8811/remote-diagnostics-20250211-131529",
@@ -102,13 +102,14 @@ public class WhatsGoingOnTests extends ESTestCase {
             // ClusterName clusterName = new ClusterName("cluster");
             // List<FailedNodeException> failedNodeExceptions = List.of();
             NodesHotThreadsResponse nodesHotThreadsResponse = getNodesHotThreadsResponse(diagLocation);
-            Map<String, List<String>> nodesToResults = WhatIsMyClusterDoingAction.LocalAction.distillHotThreads(
-                nodesHotThreadsResponse.getNodesMap()
+            Map<String, List<WhatIsMyClusterDoingAction.LocalAction.DistilledHotThread>> nodesToResults = WhatIsMyClusterDoingAction.LocalAction.distillHotThreads(
+                nodesHotThreadsResponse.getNodesMap(),
+                null
             );
             nodesHotThreadsResponse.decRef();
-            for (Map.Entry<String, List<String>> entry : nodesToResults.entrySet()) {
+            for (Map.Entry<String, List<WhatIsMyClusterDoingAction.LocalAction.DistilledHotThread>> entry : nodesToResults.entrySet()) {
                 System.out.println("**** " + entry.getKey());
-                System.out.println(entry.getValue().stream().collect(Collectors.joining("\n")));
+                System.out.println(entry.getValue().stream().map(t -> t.percent() + "% " + t.classification() + " " + t.activities()).collect(Collectors.joining("\n")));
             }
             // printNodesStats(diagLocation);
         }
