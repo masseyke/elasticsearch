@@ -77,7 +77,14 @@ public final class ScriptProcessor extends AbstractProcessor {
         if (factory == null) {
             factory = scriptService.compile(script, IngestScript.CONTEXT);
         }
-        factory.newInstance(script.getParams(), document.getCtxMap()).execute();
+        // A Painless script mutates the ctx map directly (bypassing IngestDocument.setFieldValue), so bracket execution to charge
+        // those mutations against the document's cumulative field-value size budget.
+        document.trackCtxMapMutationSize(true);
+        try {
+            factory.newInstance(script.getParams(), document.getCtxMap()).execute();
+        } finally {
+            document.trackCtxMapMutationSize(false);
+        }
         return document;
     }
 

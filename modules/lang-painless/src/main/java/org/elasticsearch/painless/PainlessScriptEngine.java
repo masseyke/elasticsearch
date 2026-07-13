@@ -77,9 +77,19 @@ public final class PainlessScriptEngine implements ScriptEngine {
             CompilerSettings contextDefaults = new CompilerSettings();
             contextDefaults.setRegexesEnabled(regexEnabled);
             contextDefaults.setRegexLimitFactor(regexLimitFactor);
-            contextDefaults.setMaxAllocationBytes(
-                CompilerSettings.MAX_ALLOCATION_BYTES.getConcreteSettingForNamespace(context.name).get(settings).getBytes()
-            );
+            var allocationLimit = CompilerSettings.MAX_ALLOCATION_BYTES.getConcreteSettingForNamespace(context.name);
+            final long maxAllocationBytes;
+            if (allocationLimit.exists(settings)) {
+                // An operator-configured node setting always wins, and may even disable a context's default via -1b.
+                maxAllocationBytes = allocationLimit.get(settings).getBytes();
+            } else if (context.defaultMaxAllocationBytes != ScriptContext.NO_DEFAULT_MAX_ALLOCATION_BYTES) {
+                // Otherwise honor a default declared by the context itself (e.g. the ingest context).
+                maxAllocationBytes = context.defaultMaxAllocationBytes;
+            } else {
+                // No operator setting and no context default: the setting's own default (the -1b disabled sentinel).
+                maxAllocationBytes = allocationLimit.get(settings).getBytes();
+            }
+            contextDefaults.setMaxAllocationBytes(maxAllocationBytes);
 
             mutableContextsToCompilers.put(
                 context,

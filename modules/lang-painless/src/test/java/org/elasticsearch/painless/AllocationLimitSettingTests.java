@@ -16,6 +16,7 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.painless.spi.PainlessTestScript;
 import org.elasticsearch.painless.spi.Whitelist;
 import org.elasticsearch.painless.spi.WhitelistLoader;
+import org.elasticsearch.script.IngestScript;
 import org.elasticsearch.script.ScriptContext;
 import org.elasticsearch.test.ESTestCase;
 
@@ -108,11 +109,50 @@ public class AllocationLimitSettingTests extends ESTestCase {
         assertThat(e.getMessage(), containsString(LIMIT_KEY));
     }
 
+    public void testContextDeclaredDefaultIsSurfacedOnScriptContext() {
+        // The plumbing: a context can declare a default, and one that doesn't uses the sentinel.
+        assertEquals(ScriptContext.NO_DEFAULT_MAX_ALLOCATION_BYTES, PainlessTestScript.CONTEXT.defaultMaxAllocationBytes);
+        assertEquals(IngestScript.DEFAULT_MAX_ALLOCATION_BYTES, IngestScript.CONTEXT.defaultMaxAllocationBytes);
+    }
+
+    public void testContextDeclaredDefaultAppliedWhenSettingUnset() {
+        // The ingest context declares a default, so allocation tracking is on out-of-the-box even with no operator setting.
+        PainlessScriptEngine engine = new PainlessScriptEngine(Settings.EMPTY, ingestScriptContexts());
+        CompilerSettings contextDefaults = engine.getDefaultCompilerSettings(IngestScript.CONTEXT);
+        assertEquals(IngestScript.DEFAULT_MAX_ALLOCATION_BYTES, contextDefaults.getMaxAllocationBytes());
+        assertTrue(contextDefaults.isAllocationTrackingEnabled());
+    }
+
+    public void testOperatorSettingBeatsContextDefault() {
+        Settings settings = Settings.builder()
+            .put("script.painless.max_allocation_bytes.context." + IngestScript.CONTEXT.name + ".limit", "32mb")
+            .build();
+        PainlessScriptEngine engine = new PainlessScriptEngine(settings, ingestScriptContexts());
+        CompilerSettings contextDefaults = engine.getDefaultCompilerSettings(IngestScript.CONTEXT);
+        assertEquals(ByteSizeValue.ofMb(32).getBytes(), contextDefaults.getMaxAllocationBytes());
+    }
+
+    public void testOperatorCanDisableContextDefault() {
+        Settings settings = Settings.builder()
+            .put("script.painless.max_allocation_bytes.context." + IngestScript.CONTEXT.name + ".limit", "-1b")
+            .build();
+        PainlessScriptEngine engine = new PainlessScriptEngine(settings, ingestScriptContexts());
+        CompilerSettings contextDefaults = engine.getDefaultCompilerSettings(IngestScript.CONTEXT);
+        assertEquals(-1L, contextDefaults.getMaxAllocationBytes());
+        assertFalse(contextDefaults.isAllocationTrackingEnabled());
+    }
+
     private static Map<ScriptContext<?>, List<Whitelist>> scriptContexts() {
         Map<ScriptContext<?>, List<Whitelist>> contexts = new HashMap<>();
         List<Whitelist> whitelists = new ArrayList<>(PainlessPlugin.baseWhiteList());
         whitelists.add(WhitelistLoader.loadFromResourceFiles(PainlessPlugin.class, "org.elasticsearch.painless.test"));
         contexts.put(PainlessTestScript.CONTEXT, whitelists);
+        return contexts;
+    }
+
+    private static Map<ScriptContext<?>, List<Whitelist>> ingestScriptContexts() {
+        Map<ScriptContext<?>, List<Whitelist>> contexts = new HashMap<>();
+        contexts.put(IngestScript.CONTEXT, new ArrayList<>(PainlessPlugin.baseWhiteList()));
         return contexts;
     }
 }

@@ -242,8 +242,8 @@ public class SetProcessorTests extends ESTestCase {
     }
 
     public void testManySetProcessorsWithCopyFromOfLargeFieldTripsCumulativeSizeLimit() throws Exception {
-        // Reproduces the shape of https://github.com/elastic/security/issues/5580 : a pipeline made of many `set` processors,
-        // each copying the same already-large field into a distinct new field (the exact shape of the reported exploit script).
+        // A pipeline made of many `set` processors, each copying the same already-large field into a distinct new field
+        // (the exact shape of the reported exploit script).
         // No single copy is large, but the cumulative effect of many of them should trip IngestDocument's cumulative field
         // value size guard well before all processors run, rather than being allowed to build a document that OOMs the node
         // when it's later serialized in full.

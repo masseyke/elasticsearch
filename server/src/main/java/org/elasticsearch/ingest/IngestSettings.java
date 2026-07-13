@@ -36,8 +36,7 @@ public final class IngestSettings {
      * The maximum cumulative number of bytes that can be written into a single document's fields over its entire ingest
      * lifecycle (across all processors and any nested pipelines). This guards against pipelines that chain many processors
      * that each copy or expand an already-large field (e.g. many `set` processors with `copy_from`) -- individually cheap,
-     * but the resulting document can otherwise blow up memory when it's later serialized in full. See
-     * https://github.com/elastic/security/issues/5580.
+     * but the resulting document can otherwise blow up memory when it's later serialized in full.
      */
     public static final Setting<ByteSizeValue> MAX_CUMULATIVE_FIELD_VALUE_BYTES = Setting.byteSizeSetting(
         "ingest.max_cumulative_field_value_size",
