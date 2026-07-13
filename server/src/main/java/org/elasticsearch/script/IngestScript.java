@@ -10,6 +10,7 @@
 
 package org.elasticsearch.script;
 
+import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.core.TimeValue;
 
 import java.util.Map;
@@ -21,6 +22,14 @@ public abstract class IngestScript extends WriteScript {
 
     public static final String[] PARAMETERS = {};
 
+    /**
+     * Default cap on the heap a single ingest script execution may allocate. Ingest scripts are default-on for allocation
+     * tracking (unlike most script contexts) because they run with only 'write' privileges yet can allocate unbounded memory
+     * and OOM the node. Operators can raise, lower, or disable this via
+     * {@code script.painless.max_allocation_bytes.context.ingest.limit}.
+     */
+    public static final long DEFAULT_MAX_ALLOCATION_BYTES = ByteSizeValue.ofMb(50).getBytes();
+
     /** The context used to compile {@link IngestScript} factories. */
     public static final ScriptContext<Factory> CONTEXT = new ScriptContext<>(
         "ingest",
@@ -28,7 +37,8 @@ public abstract class IngestScript extends WriteScript {
         200,
         TimeValue.timeValueMillis(0),
         false,
-        true
+        true,
+        DEFAULT_MAX_ALLOCATION_BYTES
     );
 
     /** The generic runtime parameters for the script. */

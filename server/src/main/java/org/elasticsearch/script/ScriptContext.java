@@ -51,6 +51,9 @@ public final class ScriptContext<FactoryType> {
     /** The default compilation rate limit for contexts with compilation rate limiting enabled */
     public static final Tuple<Integer, TimeValue> DEFAULT_COMPILATION_RATE_LIMIT = new Tuple<>(150, TimeValue.timeValueMinutes(5));
 
+    /** Sentinel for {@link #defaultMaxAllocationBytes} meaning this context declares no default heap-allocation limit. */
+    public static final long NO_DEFAULT_MAX_ALLOCATION_BYTES = -1L;
+
     /** A unique identifier for this context. */
     public final String name;
 
@@ -75,6 +78,13 @@ public final class ScriptContext<FactoryType> {
     /** Determines if the script can be stored as part of the cluster state. */
     public final boolean allowStoredScript;
 
+    /**
+     * A per-context default limit, in bytes, on the heap a single script execution may allocate, for script engines that support
+     * allocation tracking (currently Painless). {@link #NO_DEFAULT_MAX_ALLOCATION_BYTES} means the context declares no default,
+     * in which case allocation tracking stays off unless an operator enables it. An operator-configured node setting always wins.
+     */
+    public final long defaultMaxAllocationBytes;
+
     /** Construct a context with the related instance and compiled classes with caller provided cache defaults */
     public ScriptContext(
         String name,
@@ -83,6 +93,27 @@ public final class ScriptContext<FactoryType> {
         TimeValue cacheExpireDefault,
         boolean compilationRateLimited,
         boolean allowStoredScript
+    ) {
+        this(
+            name,
+            factoryClazz,
+            cacheSizeDefault,
+            cacheExpireDefault,
+            compilationRateLimited,
+            allowStoredScript,
+            NO_DEFAULT_MAX_ALLOCATION_BYTES
+        );
+    }
+
+    /** Construct a context that additionally declares a default heap-allocation limit for its scripts. */
+    public ScriptContext(
+        String name,
+        Class<FactoryType> factoryClazz,
+        int cacheSizeDefault,
+        TimeValue cacheExpireDefault,
+        boolean compilationRateLimited,
+        boolean allowStoredScript,
+        long defaultMaxAllocationBytes
     ) {
         this.name = name;
         this.factoryClazz = factoryClazz;
@@ -119,6 +150,9 @@ public final class ScriptContext<FactoryType> {
         this.cacheExpireDefault = cacheExpireDefault;
         this.compilationRateLimited = compilationRateLimited;
         this.allowStoredScript = allowStoredScript;
+        assert defaultMaxAllocationBytes == NO_DEFAULT_MAX_ALLOCATION_BYTES || defaultMaxAllocationBytes > 0
+            : "defaultMaxAllocationBytes must be positive or NO_DEFAULT_MAX_ALLOCATION_BYTES, but was " + defaultMaxAllocationBytes;
+        this.defaultMaxAllocationBytes = defaultMaxAllocationBytes;
     }
 
     /** Construct a context with the related instance and compiled classes with defaults for cacheSizeDefault, cacheExpireDefault and
