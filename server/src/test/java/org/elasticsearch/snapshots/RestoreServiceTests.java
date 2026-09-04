@@ -19,6 +19,7 @@ import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.cluster.metadata.DataStreamTestHelper;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.IndexMetadataVerifier;
+import org.elasticsearch.cluster.metadata.IndexReshardingMetadata;
 import org.elasticsearch.cluster.metadata.MetadataCreateIndexService;
 import org.elasticsearch.cluster.metadata.ProjectId;
 import org.elasticsearch.cluster.metadata.ProjectMetadata;
@@ -715,6 +716,37 @@ public class RestoreServiceTests extends ESTestCase {
             )
         );
         assertThat(e.getMessage(), containsString("no longer exists in the cluster state"));
+    }
+
+    /**
+     * A restore over an open index must be rejected if that index is currently being resharded, to preserve the same close-index safety rule
+     * (an index mid-reshard cannot be closed either). A real reshard is a stateless-only operation, so the guard is exercised here at the
+     * unit level by placing resharding metadata on the destination index in cluster state.
+     */
+    public void testRestoreOverOpenIndexRejectsReshardingIndex() {
+        final IndexMetadata currentIndexMetadata = IndexMetadata.builder("test-idx")
+            .settings(indexSettings(IndexVersion.current(), 2, 0))
+            .reshardingMetadata(IndexReshardingMetadata.newSplitByMultiple(2, 2))
+            .build();
+        final Index index = currentIndexMetadata.getIndex();
+        final ClusterState state = ClusterState.builder(ClusterState.EMPTY_STATE)
+            .putProjectMetadata(ProjectMetadata.builder(ProjectId.DEFAULT).put(currentIndexMetadata, false))
+            .build();
+        final Snapshot snapshot = new Snapshot(ProjectId.DEFAULT, "test-repo", new SnapshotId("test-snap", randomUUID()));
+
+        final SnapshotRestoreException e = expectThrows(
+            SnapshotRestoreException.class,
+            () -> RestoreService.validateExistingOpenIndexForRestore(
+                snapshot,
+                state,
+                ProjectId.DEFAULT,
+                currentIndexMetadata,
+                currentIndexMetadata,
+                index,
+                false
+            )
+        );
+        assertThat(e.getMessage(), containsString("being resharded"));
     }
 
     private static SnapshotInfo createSnapshotInfo(Snapshot snapshot, Boolean includeGlobalState) {
