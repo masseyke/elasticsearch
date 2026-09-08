@@ -41,12 +41,14 @@ import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.common.util.iterable.Iterables;
 import org.elasticsearch.core.Assertions;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.features.FeatureService;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.indices.EmptySystemIndices;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.indices.ShardLimitValidator;
+import org.elasticsearch.indices.recovery.RecoveryFeatures;
 import org.elasticsearch.repositories.IndexId;
 import org.elasticsearch.repositories.RepositoriesService;
 import org.elasticsearch.repositories.Repository;
@@ -691,6 +693,25 @@ public class RestoreServiceTests extends ESTestCase {
     // ---- restore-over-open-index guard tests ---------------------------------------------
 
     /**
+     * A restore over an open index must refuse to publish the transition until every node in the cluster supports
+     * {@link RecoveryFeatures#RESTORE_OVER_OPEN_INDEX_RECREATES_INDEX_SERVICE}, since a node without it cannot safely recreate the
+     * {@code IndexService} for the resulting open-to-open history-UUID change.
+     */
+    public void testRestoreOverOpenIndexRejectsWhenNodeFeatureMissing() {
+        final FeatureService featureService = mock(FeatureService.class);
+        when(featureService.clusterHasFeature(any(), eq(RecoveryFeatures.RESTORE_OVER_OPEN_INDEX_RECREATES_INDEX_SERVICE))).thenReturn(
+            false
+        );
+        final Snapshot snapshot = new Snapshot(ProjectId.DEFAULT, "test-repo", new SnapshotId("test-snap", randomUUID()));
+
+        final SnapshotRestoreException e = expectThrows(
+            SnapshotRestoreException.class,
+            () -> RestoreService.ensureClusterSupportsRestoreOverOpenIndex(featureService, ClusterState.EMPTY_STATE, snapshot)
+        );
+        assertThat(e.getMessage(), containsString("not every node"));
+    }
+
+    /**
      * The caller resolves the exact destination {@link Index} (name and UUID) before submitting the restore, precisely so that an index
      * deleted and recreated under the same name is never silently adopted as the destination: the exact-identity check must reject a
      * resolved identity that no longer matches the index now present under that name.
@@ -719,10 +740,54 @@ public class RestoreServiceTests extends ESTestCase {
     }
 
     /**
-     * A restore over an open index must be rejected if that index is currently being resharded, to preserve the same close-index safety rule
-     * (an index mid-reshard cannot be closed either). A real reshard is a stateless-only operation, so the guard is exercised here at the
-     * unit level by placing resharding metadata on the destination index in cluster state.
+     * The caller resolves the destination as open, but it can be closed by a concurrent operation before this cluster-state update is
+     * published (closing keeps the same index UUID, so the exact-identity check still passes). The open-index restore path assumes an
+     * open-to-open transition, so it must reject a destination that is no longer open rather than proceed, and this is enforced at runtime
+     * (not merely asserted) so the guarantee holds in production where assertions are disabled.
      */
+    public void testRestoreOverOpenIndexRejectsIndexThatIsNoLongerOpen() {
+        final IndexMetadata closedIndexMetadata = IndexMetadata.builder("test-idx")
+            .settings(indexSettings(IndexVersion.current(), 1, 0))
+            .state(IndexMetadata.State.CLOSE)
+            .build();
+        final Snapshot snapshot = new Snapshot(ProjectId.DEFAULT, "test-repo", new SnapshotId("test-snap", randomUUID()));
+
+        final SnapshotRestoreException e = expectThrows(
+            SnapshotRestoreException.class,
+            () -> RestoreService.validateExistingOpenIndexForRestore(
+                snapshot,
+                ClusterState.EMPTY_STATE,
+                ProjectId.DEFAULT,
+                closedIndexMetadata,
+                closedIndexMetadata,
+                closedIndexMetadata.getIndex(),
+                false
+            )
+        );
+        assertThat(e.getMessage(), containsString("no longer open"));
+    }
+
+    private static SnapshotInfo createSnapshotInfo(Snapshot snapshot, Boolean includeGlobalState) {
+        var shards = randomIntBetween(0, 100);
+        return new SnapshotInfo(
+            snapshot,
+            List.of(),
+            List.of(),
+            List.of(),
+            randomAlphaOfLengthBetween(10, 100),
+            IndexVersion.current(),
+            randomNonNegativeLong(),
+            randomNonNegativeLong(),
+            shards,
+            shards,
+            List.of(),
+            includeGlobalState,
+            Map.of(),
+            SnapshotState.SUCCESS,
+            Map.of()
+        );
+    }
+
     public void testRestoreOverOpenIndexRejectsReshardingIndex() {
         final IndexMetadata currentIndexMetadata = IndexMetadata.builder("test-idx")
             .settings(indexSettings(IndexVersion.current(), 2, 0))
@@ -749,32 +814,6 @@ public class RestoreServiceTests extends ESTestCase {
         assertThat(e.getMessage(), containsString("being resharded"));
     }
 
-    private static SnapshotInfo createSnapshotInfo(Snapshot snapshot, Boolean includeGlobalState) {
-        var shards = randomIntBetween(0, 100);
-        return new SnapshotInfo(
-            snapshot,
-            List.of(),
-            List.of(),
-            List.of(),
-            randomAlphaOfLengthBetween(10, 100),
-            IndexVersion.current(),
-            randomNonNegativeLong(),
-            randomNonNegativeLong(),
-            shards,
-            shards,
-            List.of(),
-            includeGlobalState,
-            Map.of(),
-            SnapshotState.SUCCESS,
-            Map.of()
-        );
-    }
-
-    /**
-     * A retry that supplies the same restore UUID as an already-applied restore observes the correlated
-     * {@link RestoreInProgress} entry and must be a no-op rather than a second initialization. This is the caller-supplied-UUID
-     * idempotency contract that {@link RestoreService#restoreOverOpenIndices} exists to provide for a durable, resumable caller.
-     */
     public void testRestoreOverOpenIndicesIdempotentRetryIsANoOp() throws Exception {
         final String restoreUUID = UUIDs.randomBase64UUID();
         withOpenIndexRestoreHarness(fixture -> {
@@ -888,6 +927,12 @@ public class RestoreServiceTests extends ESTestCase {
             final IndexMetadataVerifier indexMetadataVerifier = mock(IndexMetadataVerifier.class);
             when(indexMetadataVerifier.verifyIndexMetadata(any(), any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
 
+            // the open-index restore path checks this feature at publish time; the harness exercises the happy path, so advertise support
+            final FeatureService featureService = mock(FeatureService.class);
+            when(featureService.clusterHasFeature(any(), eq(RecoveryFeatures.RESTORE_OVER_OPEN_INDEX_RECREATES_INDEX_SERVICE))).thenReturn(
+                true
+            );
+
             final RestoreService restoreService = new RestoreService(
                 clusterService,
                 repositoriesService,
@@ -900,7 +945,8 @@ public class RestoreServiceTests extends ESTestCase {
                 mock(FileSettingsService.class),
                 threadPool,
                 false,
-                IndexMetadataRestoreTransformer.NoOpRestoreTransformer.getInstance()
+                IndexMetadataRestoreTransformer.NoOpRestoreTransformer.getInstance(),
+                featureService
             );
 
             final Snapshot snapshot = new Snapshot(ProjectId.DEFAULT, "test-repo", new SnapshotId("test-snap", randomUUID()));
